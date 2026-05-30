@@ -1,0 +1,32 @@
+# Render avtomatik sozlash fayli
+services:
+  - type: web
+    name: attendance-bot
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: |
+      apt-get update -q && apt-get install -y -q cmake build-essential libopenblas-dev liblapack-dev libjpeg-dev
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: python bot.py
+    healthCheckPath: /health
+    disk:
+      name: bot-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.10
+      - key: DB_PATH
+        value: /data/attendance.db
+      - key: BOT_TOKEN
+        sync: false
+      - key: INITIAL_ADMIN_ID
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: OFFICE_PUBLIC_IPS
+        sync: false
+      - key: FACE_TOLERANCE
+        value: "0.50"

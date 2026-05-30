@@ -1,0 +1,191 @@
+"""Telegram klaviaturalari"""
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+    InlineKeyboardMarkup, InlineKeyboardButton
+)
+import texts
+
+
+def remove_kb():
+    return ReplyKeyboardRemove()
+
+
+def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    rows = [
+        [KeyboardButton(text=texts.BTN_ATTENDANCE)],
+        [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
+        [KeyboardButton(text=texts.BTN_SALARY)],
+    ]
+    if is_admin:
+        rows.append([KeyboardButton(text=texts.BTN_ADMIN)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+def cancel_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=texts.BTN_CANCEL)]],
+        resize_keyboard=True
+    )
+
+
+def phone_request_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_SHARE_PHONE, request_contact=True)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def location_request_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_SHARE_LOCATION, request_location=True)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def attendance_menu_kb(can_check_in: bool, can_check_out: bool) -> ReplyKeyboardMarkup:
+    rows = []
+    if can_check_in:
+        rows.append([KeyboardButton(text=texts.BTN_CHECK_IN)])
+    if can_check_out:
+        rows.append([KeyboardButton(text=texts.BTN_CHECK_OUT)])
+    rows.append([KeyboardButton(text=texts.BTN_BACK)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+def wifi_confirm_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_WIFI_CONFIRMED)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def admin_menu_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_ADMIN_LIST),
+             KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
+            [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
+             KeyboardButton(text=texts.BTN_ADMIN_RATES)],
+            [KeyboardButton(text=texts.BTN_ADMIN_SALARY),
+             KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
+            [KeyboardButton(text=texts.BTN_ADMIN_REMOVE),
+             KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
+            [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
+            [KeyboardButton(text=texts.BTN_BACK)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def admin_settings_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_SET_HOURS)],
+            [KeyboardButton(text=texts.BTN_BACK)],
+        ],
+        resize_keyboard=True
+    )
+
+
+# ===== Inline klaviaturalar =====
+
+def employees_inline_kb(employees, prefix: str) -> InlineKeyboardMarkup:
+    """Xodimlar ro'yxati inline tugmalar bilan"""
+    rows = []
+    for emp in employees:
+        admin_icon = "👑 " if emp["is_admin"] else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{admin_icon}{emp['full_name']}",
+            callback_data=f"{prefix}:{emp['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data=f"{prefix}:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def confirm_inline_kb(action: str, target_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Ha", callback_data=f"{action}:yes:{target_id}"),
+            InlineKeyboardButton(text="❌ Yo'q", callback_data=f"{action}:no:{target_id}"),
+        ]
+    ])
+
+
+def salary_admin_menu_kb() -> InlineKeyboardMarkup:
+    """Admin ish haqqi boshqaruv menyusi"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Yozuv qo'shish", callback_data="sal_add"),
+         InlineKeyboardButton(text="❌ Bekor qilish", callback_data="sal_cancel")],
+        [InlineKeyboardButton(text="📊 Excel hisobot", callback_data="sal_report"),
+         InlineKeyboardButton(text="📜 Audit tarixi", callback_data="sal_audit")],
+        [InlineKeyboardButton(text="🔒 Oyni yopish/ochish", callback_data="sal_close_month")],
+        [InlineKeyboardButton(text="🚪 Yopish", callback_data="sal_close")],
+    ])
+
+
+def month_close_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, yopish", callback_data="sal_cm_yes"),
+         InlineKeyboardButton(text="❌ Yo'q", callback_data="sal_cm_no")],
+    ])
+
+
+def month_reopen_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔓 Ha, qayta ochish", callback_data="sal_cm_reopen"),
+         InlineKeyboardButton(text="❌ Yo'q", callback_data="sal_cm_no")],
+    ])
+
+
+def salary_types_kb() -> InlineKeyboardMarkup:
+    """Kategoriya tanlash"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💸 Avans", callback_data="sal_type:avans")],
+        [InlineKeyboardButton(text="⚠️ Jarima", callback_data="sal_type:jarima")],
+        [InlineKeyboardButton(text="⭐ Mukofot", callback_data="sal_type:mukofot")],
+        [InlineKeyboardButton(text="🎁 Bonus", callback_data="sal_type:bonus")],
+        [InlineKeyboardButton(text="🛒 Mahsulot xaridi", callback_data="sal_type:mahsulot")],
+        [InlineKeyboardButton(text="❌ Bekor", callback_data="sal_type:cancel")],
+    ])
+
+
+def salary_employees_kb(employees, prefix: str) -> InlineKeyboardMarkup:
+    rows = []
+    for emp in employees:
+        rows.append([InlineKeyboardButton(
+            text=f"👤 {emp['full_name']}",
+            callback_data=f"{prefix}:{emp['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data=f"{prefix}:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def salary_entries_kb(entries, prefix: str) -> InlineKeyboardMarkup:
+    """Yozuvlar ro'yxati (bekor qilish uchun)"""
+    rows = []
+    for entry in entries:
+        info = texts.SALARY_TYPES.get(entry["entry_type"], ("📋", "?", ""))
+        emoji, type_name, _ = info
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {type_name}: {entry['amount']:,} so'm",
+            callback_data=f"{prefix}:{entry['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data=f"{prefix}:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def salary_confirm_kb() -> InlineKeyboardMarkup:
+    """Katta summa uchun tasdiqlash"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="sal_confirm:yes"),
+         InlineKeyboardButton(text="❌ Bekor qilish", callback_data="sal_confirm:no")],
+    ])
