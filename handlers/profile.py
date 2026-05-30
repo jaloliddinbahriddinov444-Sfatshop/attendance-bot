@@ -1,5 +1,6 @@
 """Profil va statistika ko'rsatish"""
 from datetime import datetime, timedelta
+from tzutil import now as tz_now, to_local
 from aiogram import Router, F
 from aiogram.types import Message
 
@@ -21,7 +22,7 @@ async def show_profile(message: Message):
         await message.answer(texts.NOT_REGISTERED)
         return
 
-    registered = datetime.fromisoformat(employee["registered_at"]).strftime("%d.%m.%Y")
+    registered = to_local(employee["registered_at"]).strftime("%d.%m.%Y")
     admin_badge = texts.ADMIN_BADGE if employee["is_admin"] else ""
 
     await message.answer(
@@ -43,7 +44,7 @@ async def show_stats(message: Message):
         await message.answer(texts.NOT_REGISTERED)
         return
 
-    now = datetime.now()
+    now = tz_now()
     year, month = now.year, now.month
     records = get_monthly_attendance(employee["id"], year, month)
 
@@ -131,7 +132,7 @@ async def show_salary(message: Message):
         )
         return
 
-    now = datetime.now()
+    now = tz_now()
     year, month = now.year, now.month
 
     # Ishlangan daqiqalar
@@ -174,7 +175,7 @@ async def show_salary(message: Message):
             type_info = texts.SALARY_TYPES.get(entry["entry_type"], ("📋", "?", ""))
             emoji, type_name, sign = type_info
             try:
-                d = datetime.fromisoformat(entry["created_at"])
+                d = to_local(entry["created_at"])
                 date_str = d.strftime("%d.%m")
             except Exception:
                 date_str = "—"

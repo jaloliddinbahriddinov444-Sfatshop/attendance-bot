@@ -3,6 +3,7 @@ import asyncio
 import io
 import logging
 from datetime import datetime
+from tzutil import now as tz_now, to_local
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
@@ -194,7 +195,7 @@ async def admin_today(message: Message):
         return
 
     records = get_today_all_attendance()
-    today_str = datetime.now().strftime("%d.%m.%Y")
+    today_str = tz_now().strftime("%d.%m.%Y")
     text = texts.ADMIN_TODAY_HEADER.format(date=today_str)
 
     if not records:
@@ -231,7 +232,7 @@ async def admin_export(message: Message):
         await message.answer("❌ openpyxl kutubxonasi o'rnatilmagan.")
         return
 
-    now = datetime.now()
+    now = tz_now()
     year, month = now.year, now.month
     employees = get_all_employees(active_only=True)
 
@@ -585,7 +586,7 @@ async def admin_salary_add_choose_employee(call: CallbackQuery, state: FSMContex
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
     # Joriy oy yopiqligini tekshirish
-    now = datetime.now()
+    now = tz_now()
     if is_month_closed(now.year, now.month):
         await call.message.edit_text(
             texts.MONTH_BLOCKED.format(month=texts.MONTHS_UZ[now.month], year=now.year)
@@ -793,7 +794,7 @@ async def admin_salary_cancel_choose_emp(call: CallbackQuery, state: FSMContext)
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
     # Joriy oy yopiqligini tekshirish
-    now = datetime.now()
+    now = tz_now()
     if is_month_closed(now.year, now.month):
         await call.message.edit_text(
             texts.MONTH_BLOCKED.format(month=texts.MONTHS_UZ[now.month], year=now.year)
@@ -826,7 +827,7 @@ async def admin_salary_cancel_choose_entry(call: CallbackQuery, state: FSMContex
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
-    now = datetime.now()
+    now = tz_now()
     entries = get_active_salary_entries(emp_id, now.year, now.month)
     if not entries:
         await call.message.edit_text(
@@ -998,7 +999,7 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     audit = get_audit_entries(year, month, limit=1000)
     for idx, e in enumerate(audit, 2):
         try:
-            d = datetime.fromisoformat(e["created_at"])
+            d = to_local(e["created_at"])
             date_str = d.strftime("%d.%m.%Y %H:%M")
         except Exception:
             date_str = e["created_at"]
@@ -1035,7 +1036,7 @@ async def admin_salary_report(call: CallbackQuery, state: FSMContext, bot: Bot):
     await call.message.edit_text(texts.SAL_REPORT_GENERATING)
     await call.answer()
 
-    now = datetime.now()
+    now = tz_now()
     year, month = now.year, now.month
     file_bytes = await asyncio.to_thread(_generate_salary_excel, year, month)
 
@@ -1055,7 +1056,7 @@ async def admin_salary_audit(call: CallbackQuery, state: FSMContext):
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
 
-    now = datetime.now()
+    now = tz_now()
     entries = get_audit_entries(now.year, now.month, limit=30)
     if not entries:
         await call.message.edit_text(texts.AUDIT_EMPTY)
@@ -1068,7 +1069,7 @@ async def admin_salary_audit(call: CallbackQuery, state: FSMContext):
     for e in entries:
         type_info = texts.SALARY_TYPES.get(e["entry_type"], ("📋", "?", "+"))
         try:
-            d = datetime.fromisoformat(e["created_at"])
+            d = to_local(e["created_at"])
             date_str = d.strftime("%d.%m %H:%M")
         except Exception:
             date_str = "—"
@@ -1102,7 +1103,7 @@ async def admin_close_month_prompt(call: CallbackQuery, state: FSMContext):
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    now = datetime.now()
+    now = tz_now()
     if is_month_closed(now.year, now.month):
         # Allaqachon yopilgan — qayta ochish taklif qilamiz
         await call.message.edit_text(
@@ -1126,7 +1127,7 @@ async def admin_close_month_do(call: CallbackQuery, state: FSMContext):
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    now = datetime.now()
+    now = tz_now()
     close_month(now.year, now.month, me["id"])
     await call.message.edit_text(
         texts.MONTH_CLOSE_DONE.format(
@@ -1142,7 +1143,7 @@ async def admin_reopen_month(call: CallbackQuery, state: FSMContext):
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    now = datetime.now()
+    now = tz_now()
     reopen_month(now.year, now.month)
     await call.message.edit_text(
         texts.MONTH_REOPEN_DONE.format(

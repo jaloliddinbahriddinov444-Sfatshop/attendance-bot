@@ -76,7 +76,7 @@ def init_db():
             amount INTEGER NOT NULL,
             reason TEXT,
             created_by INTEGER,
-            created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            created_at TIMESTAMP DEFAULT (datetime('now')),
             cancelled INTEGER DEFAULT 0,
             cancelled_by INTEGER,
             cancelled_at TIMESTAMP,
@@ -90,7 +90,7 @@ def init_db():
             year INTEGER NOT NULL,
             month INTEGER NOT NULL,
             closed_by INTEGER,
-            closed_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            closed_at TIMESTAMP DEFAULT (datetime('now')),
             PRIMARY KEY (year, month)
         );
         """)
@@ -217,7 +217,7 @@ def get_today_attendance(employee_id: int):
     with get_db() as conn:
         return conn.execute(
             "SELECT * FROM attendance WHERE employee_id = ? "
-            "AND date(timestamp, 'localtime') = date('now', 'localtime') "
+            "AND date(timestamp, '+5 hours') = date('now', '+5 hours') "
             "ORDER BY timestamp",
             (employee_id,)
         ).fetchall()
@@ -234,7 +234,7 @@ def record_attendance(employee_id, check_type, latitude, longitude,
         conn.execute(
             "INSERT INTO attendance (employee_id, check_type, timestamp, latitude, longitude, "
             "distance_meters, wifi_name, wifi_match, face_match_score, photo_file_id) "
-            "VALUES (?, ?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)",
             (employee_id, check_type, latitude, longitude, distance,
              wifi_name, 1 if wifi_match else 0, face_score, photo_file_id)
         )
@@ -244,13 +244,13 @@ def get_monthly_attendance(employee_id: int, year: int, month: int):
     with get_db() as conn:
         return conn.execute(
             """
-            SELECT date(timestamp, 'localtime') as day,
-                   MIN(CASE WHEN check_type = 'in' THEN time(timestamp, 'localtime') END) as first_in,
-                   MAX(CASE WHEN check_type = 'out' THEN time(timestamp, 'localtime') END) as last_out
+            SELECT date(timestamp, '+5 hours') as day,
+                   MIN(CASE WHEN check_type = 'in' THEN time(timestamp, '+5 hours') END) as first_in,
+                   MAX(CASE WHEN check_type = 'out' THEN time(timestamp, '+5 hours') END) as last_out
             FROM attendance
             WHERE employee_id = ?
-              AND strftime('%Y', timestamp, 'localtime') = ?
-              AND strftime('%m', timestamp, 'localtime') = ?
+              AND strftime('%Y', timestamp, '+5 hours') = ?
+              AND strftime('%m', timestamp, '+5 hours') = ?
             GROUP BY day
             ORDER BY day DESC
             """,
@@ -263,12 +263,12 @@ def get_today_all_attendance():
         return conn.execute(
             """
             SELECT e.full_name, e.position, e.id as employee_id,
-                   MIN(CASE WHEN a.check_type = 'in' THEN time(a.timestamp, 'localtime') END) as first_in,
-                   MAX(CASE WHEN a.check_type = 'out' THEN time(a.timestamp, 'localtime') END) as last_out,
+                   MIN(CASE WHEN a.check_type = 'in' THEN time(a.timestamp, '+5 hours') END) as first_in,
+                   MAX(CASE WHEN a.check_type = 'out' THEN time(a.timestamp, '+5 hours') END) as last_out,
                    MAX(CASE WHEN a.wifi_match = 0 THEN 1 ELSE 0 END) as has_wifi_warning
             FROM employees e
             LEFT JOIN attendance a ON a.employee_id = e.id
-                AND date(a.timestamp, 'localtime') = date('now', 'localtime')
+                AND date(a.timestamp, '+5 hours') = date('now', '+5 hours')
             WHERE e.is_active = 1
             GROUP BY e.id
             ORDER BY e.full_name
@@ -304,7 +304,7 @@ def delete_today_attendance(employee_id: int) -> int:
     with get_db() as conn:
         cursor = conn.execute(
             "DELETE FROM attendance WHERE employee_id = ? "
-            "AND date(timestamp, 'localtime') = date('now', 'localtime')",
+            "AND date(timestamp, '+5 hours') = date('now', '+5 hours')",
             (employee_id,)
         )
         return cursor.rowcount
@@ -312,10 +312,11 @@ def delete_today_attendance(employee_id: int) -> int:
 
 def add_manual_attendance(employee_id: int, check_type: str, time_str: str):
     """Admin tomonidan qo'lda davomat qo'shish (bugungi sana, berilgan vaqt)"""
-    from datetime import datetime
-    now = datetime.now()
+    from tzutil import now as tz_now, OFFSET
     h, m = map(int, time_str.split(":"))
-    ts = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    # Admin mahalliy (Toshkent) vaqt kiritadi -> bazaga UTC saqlaymiz
+    ts_local = tz_now().replace(hour=h, minute=m, second=0, microsecond=0)
+    ts = ts_local - OFFSET
     with get_db() as conn:
         conn.execute(
             "INSERT INTO attendance (employee_id, check_type, timestamp, "
@@ -341,13 +342,13 @@ def get_monthly_worked_minutes(employee_id: int, year: int, month: int) -> int:
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT date(timestamp, 'localtime') as day,
-                   MIN(CASE WHEN check_type = 'in' THEN time(timestamp, 'localtime') END) as first_in,
-                   MAX(CASE WHEN check_type = 'out' THEN time(timestamp, 'localtime') END) as last_out
+            SELECT date(timestamp, '+5 hours') as day,
+                   MIN(CASE WHEN check_type = 'in' THEN time(timestamp, '+5 hours') END) as first_in,
+                   MAX(CASE WHEN check_type = 'out' THEN time(timestamp, '+5 hours') END) as last_out
             FROM attendance
             WHERE employee_id = ?
-              AND strftime('%Y', timestamp, 'localtime') = ?
-              AND strftime('%m', timestamp, 'localtime') = ?
+              AND strftime('%Y', timestamp, '+5 hours') = ?
+              AND strftime('%m', timestamp, '+5 hours') = ?
             GROUP BY day
             """,
             (employee_id, str(year), f"{month:02d}")
@@ -374,8 +375,8 @@ def get_monthly_salary_entries(employee_id: int, year: int, month: int):
             """
             SELECT * FROM salary_entries
             WHERE employee_id = ?
-              AND strftime('%Y', created_at) = ?
-              AND strftime('%m', created_at) = ?
+              AND strftime('%Y', created_at, '+5 hours') = ?
+              AND strftime('%m', created_at, '+5 hours') = ?
               AND cancelled = 0
             ORDER BY created_at DESC
             """,
@@ -391,8 +392,8 @@ def get_salary_totals_by_type(employee_id: int, year: int, month: int) -> dict:
             SELECT entry_type, SUM(amount) as total
             FROM salary_entries
             WHERE employee_id = ?
-              AND strftime('%Y', created_at) = ?
-              AND strftime('%m', created_at) = ?
+              AND strftime('%Y', created_at, '+5 hours') = ?
+              AND strftime('%m', created_at, '+5 hours') = ?
               AND cancelled = 0
             GROUP BY entry_type
             """,
@@ -421,7 +422,7 @@ def cancel_salary_entry(entry_id: int, cancelled_by: int, cancel_reason: str):
     with get_db() as conn:
         conn.execute(
             "UPDATE salary_entries SET cancelled = 1, cancelled_by = ?, "
-            "cancelled_at = datetime('now', 'localtime'), cancel_reason = ? "
+            "cancelled_at = datetime('now'), cancel_reason = ? "
             "WHERE id = ?",
             (cancelled_by, cancel_reason, entry_id)
         )
@@ -439,7 +440,7 @@ def get_active_salary_entries(employee_id: int, year: int, month: int):
     with get_db() as conn:
         return conn.execute(
             "SELECT * FROM salary_entries WHERE employee_id = ? "
-            "AND strftime('%Y', created_at) = ? AND strftime('%m', created_at) = ? "
+            "AND strftime('%Y', created_at, '+5 hours') = ? AND strftime('%m', created_at, '+5 hours') = ? "
             "AND cancelled = 0 ORDER BY created_at DESC",
             (employee_id, str(year), f"{month:02d}")
         ).fetchall()
@@ -460,7 +461,7 @@ def close_month(year: int, month: int, closed_by: int):
     with get_db() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO closed_months (year, month, closed_by, closed_at) "
-            "VALUES (?, ?, ?, datetime('now', 'localtime'))",
+            "VALUES (?, ?, ?, datetime('now'))",
             (year, month, closed_by)
         )
 
@@ -488,8 +489,8 @@ def get_audit_entries(year: int, month: int, limit: int = 30):
             LEFT JOIN employees e ON se.employee_id = e.id
             LEFT JOIN employees creator ON se.created_by = creator.id
             LEFT JOIN employees canceller ON se.cancelled_by = canceller.id
-            WHERE strftime('%Y', se.created_at) = ?
-              AND strftime('%m', se.created_at) = ?
+            WHERE strftime('%Y', se.created_at, '+5 hours') = ?
+              AND strftime('%m', se.created_at, '+5 hours') = ?
             ORDER BY se.created_at DESC
             LIMIT ?
             """,

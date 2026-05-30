@@ -1,6 +1,7 @@
 """Davomat: Keldim / Ketdim — Wi-Fi + Selfi bitta qadamda"""
 import logging
 from datetime import datetime
+from tzutil import now as tz_now, fmt as fmt_local
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -28,7 +29,7 @@ def _today_status(today_records) -> str:
     if not today_records:
         return texts.STATUS_NOT_CHECKED
     last = today_records[-1]
-    t = datetime.fromisoformat(last["timestamp"]).strftime("%H:%M")
+    t = fmt_local(last["timestamp"])
     if last["check_type"] == "in":
         return texts.STATUS_CHECKED_IN.format(time=t)
     return texts.STATUS_CHECKED_OUT.format(time=t)
@@ -64,7 +65,7 @@ async def start_attendance(message: Message, state: FSMContext):
 
     if check_type == "in" and last is not None:
         if last["check_type"] == "in":
-            t = datetime.fromisoformat(last["timestamp"]).strftime("%H:%M")
+            t = fmt_local(last["timestamp"])
             await message.answer(texts.ALREADY_CHECKED_IN_TODAY.format(time=t))
         return
 
@@ -73,7 +74,7 @@ async def start_attendance(message: Message, state: FSMContext):
             await message.answer(texts.NEED_CHECK_IN_FIRST)
             return
         if last["check_type"] == "out":
-            t = datetime.fromisoformat(last["timestamp"]).strftime("%H:%M")
+            t = fmt_local(last["timestamp"])
             await message.answer(texts.ALREADY_CHECKED_OUT.format(time=t))
             return
 
@@ -136,7 +137,7 @@ async def check_verified(message: Message, state: FSMContext):
     )
 
     cleanup_token(token)
-    now = datetime.now()
+    now = tz_now()
     time_str = now.strftime("%H:%M")
 
     if check_type == "in":
