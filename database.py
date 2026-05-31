@@ -35,6 +35,7 @@ def init_db():
             face_encoding BLOB NOT NULL,
             is_admin INTEGER DEFAULT 0,
             is_active INTEGER DEFAULT 1,
+            role TEXT DEFAULT 'employee',
             registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -100,6 +101,23 @@ def init_db():
         columns = [row[1] for row in cursor.fetchall()]
         if "hourly_rate" not in columns:
             conn.execute("ALTER TABLE employees ADD COLUMN hourly_rate INTEGER DEFAULT 0")
+
+        # Migratsiya: role ustunini employees jadvaliga qo'shish
+        # (employee | admin | boss | bosh_admin)
+        if "role" not in columns:
+            conn.execute(
+                "ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee'"
+            )
+            # Eski adminlar -> 'admin'
+            conn.execute(
+                "UPDATE employees SET role = 'admin' WHERE is_admin = 1"
+            )
+            # INITIAL_ADMIN_ID -> 'bosh_admin' (faqat bittagina)
+            if INITIAL_ADMIN_ID:
+                conn.execute(
+                    "UPDATE employees SET role = 'bosh_admin' WHERE telegram_id = ?",
+                    (INITIAL_ADMIN_ID,)
+                )
 
     # Boshlang'ich sozlamalar
     defaults = {
@@ -168,11 +186,13 @@ def get_active_employees_count() -> int:
 def create_employee(telegram_id: int, full_name: str, phone: str,
                     position: str, face_encoding: bytes) -> int:
     is_admin = 1 if telegram_id == INITIAL_ADMIN_ID else 0
+    # Birinchi admin (INITIAL_ADMIN_ID) avtomatik Bosh Admin bo'ladi
+    role = "bosh_admin" if telegram_id == INITIAL_ADMIN_ID else "employee"
     with get_db() as conn:
         cursor = conn.execute(
             "INSERT INTO employees (telegram_id, full_name, phone, position, "
-            "face_encoding, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
-            (telegram_id, full_name, phone, position, face_encoding, is_admin)
+            "face_encoding, is_admin, role) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, full_name, phone, position, face_encoding, is_admin, role)
         )
         return cursor.lastrowid
 
@@ -204,11 +224,68 @@ def reactivate_employee(employee_id: int):
 
 
 def set_admin_status(employee_id: int, is_admin: bool):
+    """is_admin'ni yangilash va role'ni mos ravishda sinxronlash.
+
+    XAVFSIZLIK: Bosh Admin va Boss bu funksiya orqali pasaytirilmaydi —
+    ularning roli alohida funksiyalar orqali boshqariladi (set_role).
+    """
+    with get_db() as conn:
+        # Joriy rolni tekshirish — bosh_admin/boss'ni saqlab qolish uchun
+        row = conn.execute(
+            "SELECT role FROM employees WHERE id = ?", (employee_id,)
+        ).fetchone()
+        current_role = (row["role"] if row else None) or "employee"
+        if current_role in ("bosh_admin", "boss"):
+            # Bunday foydalanuvchilarni bu funksiya tegmaydi
+            return
+        new_role = "admin" if is_admin else "employee"
+        conn.execute(
+            "UPDATE employees SET is_admin = ?, role = ? WHERE id = ?",
+            (1 if is_admin else 0, new_role, employee_id)
+        )
+
+
+# ===== Rollar (bosh_admin, boss, admin) =====
+
+def set_role(employee_id: int, role: str):
+    """Xodimning rolini to'g'ridan-to'g'ri o'rnatish va is_admin'ni sinxronlash.
+
+    Faqat shu funksiya bosh_admin yoki boss tayinlay/olib tashlay oladi.
+    """
+    is_admin_flag = 1 if role in ("admin", "bosh_admin") else 0
     with get_db() as conn:
         conn.execute(
-            "UPDATE employees SET is_admin = ? WHERE id = ?",
-            (1 if is_admin else 0, employee_id)
+            "UPDATE employees SET role = ?, is_admin = ? WHERE id = ?",
+            (role, is_admin_flag, employee_id)
         )
+
+
+def get_bosh_admin():
+    """Bitta Bosh Admin (yoki None)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE role = 'bosh_admin' AND is_active = 1 "
+            "LIMIT 1"
+        ).fetchone()
+
+
+def get_boss():
+    """Bitta Boss (yoki None — hali tayinlanmagan bo'lishi mumkin)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE role = 'boss' AND is_active = 1 "
+            "LIMIT 1"
+        ).fetchone()
+
+
+def get_employees_by_role(role: str):
+    """Berilgan roldagi barcha faol xodimlar."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE role = ? AND is_active = 1 "
+            "ORDER BY full_name",
+            (role,)
+        ).fetchall()
 
 
 # ===== Davomat =====
