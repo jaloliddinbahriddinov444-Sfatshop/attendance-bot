@@ -14,7 +14,7 @@ def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text=texts.BTN_ATTENDANCE)],
         [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
-        [KeyboardButton(text=texts.BTN_SALARY)],
+        [KeyboardButton(text=texts.BTN_TASKS), KeyboardButton(text=texts.BTN_SALARY)],
     ]
     if is_admin:
         rows.append([KeyboardButton(text=texts.BTN_ADMIN)])
@@ -76,7 +76,8 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
              KeyboardButton(text=texts.BTN_ADMIN_RATES)],
             [KeyboardButton(text=texts.BTN_ADMIN_SALARY),
-             KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
+             KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
+            [KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
             [KeyboardButton(text=texts.BTN_ADMIN_REMOVE),
              KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
             [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
@@ -188,4 +189,44 @@ def salary_confirm_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="sal_confirm:yes"),
          InlineKeyboardButton(text="❌ Bekor qilish", callback_data="sal_confirm:no")],
+    ])
+
+
+# ===== Vazifalar (Phase 2) =====
+
+def task_complete_kb(task_id: int) -> InlineKeyboardMarkup:
+    """Xodim oynasida har bir ochiq vazifa uchun "Tugatdim" tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.TASK_MARK_DONE_BTN,
+                              callback_data=f"task_done:{task_id}")]
+    ])
+
+
+def task_description_skip_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_TASK_SKIP_DESCRIPTION)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def task_deadline_skip_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_TASK_SKIP_DEADLINE)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def checkout_tasks_yes_no_kb() -> InlineKeyboardMarkup:
+    """Ketdim oxiridagi "Hammasini tugatdingizmi?" savoli."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, tugatdim",
+                              callback_data="ck_tasks:yes"),
+         InlineKeyboardButton(text="❌ Yo'q, tugatmadim",
+                              callback_data="ck_tasks:no")],
     ])

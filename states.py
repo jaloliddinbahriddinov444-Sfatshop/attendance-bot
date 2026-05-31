@@ -33,3 +33,11 @@ class AdminSalary(StatesGroup):
     add_amount = State()
     add_reason = State()
     cancel_reason = State()
+
+
+class TaskCreate(StatesGroup):
+    """Admin/Boss tomonidan vazifa yaratish."""
+    choosing_employee = State()
+    entering_title = State()
+    entering_description = State()
+    entering_deadline = State()

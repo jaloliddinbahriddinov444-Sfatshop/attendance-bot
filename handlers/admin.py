@@ -10,7 +10,7 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeybo
 
 import texts
 import keyboards as kb
-from states import AdminPanel, AdminSalary
+from states import AdminPanel, AdminSalary, TaskCreate
 from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
     deactivate_employee, set_admin_status, get_active_employees_count,
@@ -20,7 +20,8 @@ from database import (
     get_salary_entry, get_active_salary_entries,
     is_month_closed, close_month, reopen_month,
     get_audit_entries, get_all_employees_salary_summary,
-    get_monthly_worked_minutes, get_salary_totals_by_type
+    get_monthly_worked_minutes, get_salary_totals_by_type,
+    create_task,
 )
 from config import MAX_EMPLOYEES
 
@@ -1157,3 +1158,181 @@ async def admin_reopen_month(call: CallbackQuery, state: FSMContext):
 async def admin_close_month_no(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(texts.CANCELLED)
     await call.answer()
+
+
+# ===== Phase 2: Admin vazifa berish =====
+
+@router.message(F.text == texts.BTN_ADMIN_TASKS)
+async def task_pick_employee(message: Message, state: FSMContext):
+    """Admin "Vazifa berish" tugmasini bosdi — xodim tanlash."""
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not me or not me["is_admin"]:
+        await message.answer(texts.NO_PERMISSION)
+        return
+
+    await state.clear()
+    employees = get_all_employees(active_only=True)
+    # O'zini ham ro'yxatdan chiqarmaymiz — admin o'ziga ham vazifa qo'sha oladi
+    if not employees:
+        await message.answer("❌ Xodimlar yo'q.")
+        return
+
+    await message.answer(
+        texts.ADMIN_TASK_PICK_EMP,
+        reply_markup=kb.salary_employees_kb(employees, prefix="task_emp")
+    )
+    await state.set_state(TaskCreate.choosing_employee)
+
+
+@router.callback_query(TaskCreate.choosing_employee, F.data.startswith("task_emp:"))
+async def task_employee_chosen(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    if parts[1] == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    try:
+        emp_id = int(parts[1])
+    except ValueError:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    await state.update_data(task_emp_id=emp_id,
+                            task_emp_name=emp["full_name"],
+                            task_emp_telegram=emp["telegram_id"])
+    await call.message.edit_text(
+        texts.ADMIN_TASK_ASK_TITLE.format(name=emp["full_name"])
+    )
+    await state.set_state(TaskCreate.entering_title)
+    await call.answer()
+
+
+@router.message(TaskCreate.entering_title, F.text)
+async def task_title_handler(message: Message, state: FSMContext):
+    title = message.text.strip()
+    if message.text == texts.BTN_CANCEL:
+        await state.clear()
+        await message.answer(texts.CANCELLED,
+                             reply_markup=kb.admin_menu_kb())
+        return
+    if len(title) < 3:
+        await message.answer(texts.ADMIN_TASK_TITLE_SHORT)
+        return
+
+    await state.update_data(task_title=title)
+    await message.answer(
+        texts.ADMIN_TASK_ASK_DESC,
+        reply_markup=kb.task_description_skip_kb()
+    )
+    await state.set_state(TaskCreate.entering_description)
+
+
+@router.message(TaskCreate.entering_description, F.text)
+async def task_description_handler(message: Message, state: FSMContext):
+    if message.text == texts.BTN_CANCEL:
+        await state.clear()
+        await message.answer(texts.CANCELLED,
+                             reply_markup=kb.admin_menu_kb())
+        return
+
+    if message.text == texts.BTN_TASK_SKIP_DESCRIPTION:
+        desc = None
+    else:
+        desc = message.text.strip()
+        if len(desc) > 500:
+            desc = desc[:500]
+
+    await state.update_data(task_description=desc)
+    await message.answer(
+        texts.ADMIN_TASK_ASK_DEADLINE,
+        reply_markup=kb.task_deadline_skip_kb()
+    )
+    await state.set_state(TaskCreate.entering_deadline)
+
+
+def _parse_deadline(text: str):
+    """DD.MM yoki DD.MM HH:MM kiritishni UTC ISO string'ga aylantiradi (joriy yil)."""
+    text = text.strip()
+    now_local = tz_now()
+    # Format variantlari
+    formats = ("%d.%m %H:%M", "%d.%m")
+    parsed = None
+    for f in formats:
+        try:
+            t = datetime.strptime(text, f).replace(year=now_local.year)
+            if f == "%d.%m":
+                # Standart muddat: kun oxiri 23:59
+                t = t.replace(hour=23, minute=59)
+            parsed = t
+            break
+        except ValueError:
+            continue
+    if parsed is None:
+        return None
+    # Local Tashkent -> UTC saqlash
+    from tzutil import OFFSET
+    return (parsed - OFFSET).isoformat()
+
+
+@router.message(TaskCreate.entering_deadline, F.text)
+async def task_deadline_handler(message: Message, state: FSMContext, bot: Bot):
+    if message.text == texts.BTN_CANCEL:
+        await state.clear()
+        await message.answer(texts.CANCELLED,
+                             reply_markup=kb.admin_menu_kb())
+        return
+
+    if message.text == texts.BTN_TASK_SKIP_DEADLINE:
+        deadline_iso = None
+    else:
+        deadline_iso = _parse_deadline(message.text)
+        if deadline_iso is None:
+            await message.answer(texts.ADMIN_TASK_DEADLINE_INVALID)
+            return
+
+    data = await state.get_data()
+    me = get_employee_by_telegram_id(message.from_user.id)
+
+    task_id = create_task(
+        title=data["task_title"],
+        description=data.get("task_description"),
+        assigned_to=data["task_emp_id"],
+        assigned_by=me["id"],
+        deadline=deadline_iso,
+    )
+
+    deadline_str = ""
+    if deadline_iso:
+        deadline_str = "\n⏰ Muddat: <i>{}</i>".format(
+            to_local(deadline_iso).strftime("%d.%m %H:%M")
+        )
+    desc_str = ""
+    if data.get("task_description"):
+        desc_str = "\n💬 Izoh: <i>{}</i>".format(data["task_description"])
+
+    await message.answer(
+        texts.ADMIN_TASK_SAVED.format(
+            name=data["task_emp_name"],
+            title=data["task_title"],
+            deadline=deadline_str,
+            desc=desc_str,
+        ),
+        reply_markup=kb.admin_menu_kb()
+    )
+
+    # Xodimga bildirishnoma
+    notify_text = texts.ADMIN_TASK_NOTIFY_EMP.format(
+        title=data["task_title"],
+        by=me["full_name"],
+        deadline=deadline_str,
+        desc=desc_str,
+    )
+    await _send_notification(bot, data["task_emp_telegram"], notify_text)
+
+    await state.clear()

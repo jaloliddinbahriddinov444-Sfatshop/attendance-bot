@@ -486,3 +486,73 @@ MONTH_BLOCKED = (
 )
 
 MONTH_ALREADY_CLOSED = "ℹ️ Bu oy allaqachon yopilgan. Qayta ochaymi?"
+
+
+# ===== Vazifalar (Phase 2) =====
+
+# Tugmalar
+BTN_TASKS = "📝 Vazifalarim"
+BTN_ADMIN_TASKS = "📝 Vazifa berish"
+BTN_TASK_SKIP_DEADLINE = "⏭ Muddatsiz"
+BTN_TASK_SKIP_DESCRIPTION = "⏭ Izohsiz"
+
+# Xodim oynasi
+TASKS_EMPTY = "📭 Sizda hozirda vazifalar yo'q."
+TASKS_HEADER = "📝 <b>Sizning vazifalaringiz</b>\n\nAktivlari yuqorida turadi. Tugatish uchun pastdagi tugmalarni bosing."
+TASK_LINE_OPEN = "\n━━━━━━━━━━\n🟡 <b>{title}</b>\n👨‍💼 Tayinlagan: <i>{by}</i>\n📅 Yaratilgan: <i>{created}</i>{deadline}{desc}"
+TASK_LINE_DONE = "\n━━━━━━━━━━\n✅ <s>{title}</s>\n📅 Tugatilgan: <i>{completed}</i>"
+TASK_LINE_CANCELLED = "\n━━━━━━━━━━\n❌ <s>{title}</s> (bekor qilingan)"
+TASK_DEADLINE_FRAGMENT = "\n⏰ Muddat: <i>{deadline}</i>"
+TASK_DESC_FRAGMENT = "\n💬 {desc}"
+TASK_MARK_DONE_BTN = "✅ Tugatdim"
+TASK_COMPLETED_OK = "✅ Vazifa tugatilgan deb belgilandi."
+TASK_ALREADY_DONE = "ℹ️ Bu vazifa allaqachon yopilgan."
+
+# Admin/Boss vazifa berish
+ADMIN_TASK_PICK_EMP = "👤 Kim uchun vazifa beramiz? Xodimni tanlang:"
+ADMIN_TASK_ASK_TITLE = "📝 <b>{name}</b> uchun vazifa.\n\nVazifa sarlavhasini yozing (qisqa va aniq):"
+ADMIN_TASK_TITLE_SHORT = "⚠️ Sarlavha juda qisqa. Kamida 3 belgi."
+ADMIN_TASK_ASK_DESC = "💬 Izoh qo'shasizmi? (ixtiyoriy — kerak bo'lmasa pastdagi tugmani bosing)"
+ADMIN_TASK_ASK_DEADLINE = "⏰ Muddat qo'shasizmi?\n\nFormat: <code>DD.MM</code> yoki <code>DD.MM HH:MM</code> (masalan: <code>05.06</code> yoki <code>05.06 18:00</code>).\n\nMuddatsiz bo'lsa pastdagi tugmani bosing."
+ADMIN_TASK_DEADLINE_INVALID = "⚠️ Sana noto'g'ri. Format: <code>DD.MM</code> yoki <code>DD.MM HH:MM</code>."
+ADMIN_TASK_SAVED = (
+    "✅ Vazifa saqlandi.\n\n"
+    "👤 Kim uchun: <b>{name}</b>\n"
+    "📝 Sarlavha: <b>{title}</b>{deadline}{desc}"
+)
+ADMIN_TASK_NOTIFY_EMP = (
+    "📝 <b>Yangi vazifa</b>\n\n"
+    "<b>{title}</b>\n"
+    "👨‍💼 Tayinlagan: <i>{by}</i>{deadline}{desc}\n\n"
+    "«📝 Vazifalarim» bo'limidan ko'rishingiz mumkin."
+)
+
+# Ketdim — vazifa savoli
+CHECKOUT_TASKS_PROMPT = (
+    "📝 <b>Ketishdan oldin:</b> sizda <b>{count}</b> ta tugatilmagan vazifa bor.\n\n"
+    "{list}\n\n"
+    "Hammasini tugatdingizmi?"
+)
+CHECKOUT_TASKS_SHORT_LINE = "• {title}"
+CHECKOUT_TASKS_DONE_OK = "✅ Vazifalar tugatilgan deb belgilandi. Yaxshi ish kuni bo'ldi!"
+CHECKOUT_TASKS_NOT_DONE = "📌 Tugatilmagan vazifalar qayd qilindi. Tayinlovchiga xabar berildi."
+
+# Tayinlovchi uchun bildirishnoma
+TASK_NOTIFY_DONE = (
+    "✅ <b>Vazifa tugatildi</b>\n\n"
+    "<b>{title}</b>\n"
+    "👤 Xodim: <i>{employee}</i>\n"
+    "📅 Tugatildi: <i>{when}</i>"
+)
+TASK_NOTIFY_SKIPPED = (
+    "📌 <b>Vazifa tugatilmadi</b>\n\n"
+    "<b>{title}</b>\n"
+    "👤 Xodim: <i>{employee}</i>\n"
+    "📅 Sana: <i>{when}</i>\n"
+    "ℹ️ Vazifa keyingi kunga qoldi."
+)
+
+# Profilda tugatilmagan vazifalar (admin/boss xodimni tekshirganda)
+PROFILE_OPEN_TASKS_HEADER = "\n\n📝 <b>Tugatilmagan vazifalar:</b>"
+PROFILE_OPEN_TASK_LINE = "\n• <b>{title}</b> (tayinlagan: {by}, yaratilgan: {created}){skips}"
+PROFILE_TASK_SKIPS_FRAGMENT = " — <i>{count} marta o'tkazilgan</i>"

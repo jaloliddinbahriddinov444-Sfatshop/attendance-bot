@@ -167,6 +167,9 @@ async def check_verified(message: Message, state: FSMContext):
             texts.CHECK_OUT_SUCCESS.format(time=time_str, worked=worked_str),
             reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
         )
+        # Phase 2: ochiq vazifalar bo'lsa, "Hammasini tugatdingizmi?" savolini chiqarish
+        from handlers.tasks import maybe_prompt_checkout_tasks
+        await maybe_prompt_checkout_tasks(message, employee["id"])
 
     await state.clear()
 

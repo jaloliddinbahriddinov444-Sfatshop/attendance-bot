@@ -12,7 +12,7 @@ from database import init_db
 from services.wifi_verify import start_verify_server
 
 # Handlerlar
-from handlers import common, registration, attendance, profile, admin
+from handlers import common, registration, attendance, profile, admin, tasks
 
 
 logging.basicConfig(
@@ -41,6 +41,7 @@ async def main():
         attendance.router,
         admin.router,
         profile.router,
+        tasks.router,
         common.router,
     )
 

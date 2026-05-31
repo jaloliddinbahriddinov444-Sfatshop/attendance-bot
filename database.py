@@ -94,6 +94,30 @@ def init_db():
             closed_at TIMESTAMP DEFAULT (datetime('now')),
             PRIMARY KEY (year, month)
         );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            assigned_to INTEGER NOT NULL,
+            assigned_by INTEGER NOT NULL,
+            deadline TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            completed_at TIMESTAMP,
+            FOREIGN KEY (assigned_to) REFERENCES employees (id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_by) REFERENCES employees (id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
+        CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
+        CREATE TABLE IF NOT EXISTS task_skips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            skipped_at TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_task_skips_task ON task_skips(task_id);
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -595,3 +619,123 @@ def get_all_employees_salary_summary(year: int, month: int):
             "total": total,
         })
     return result
+
+
+# ===== Vazifalar (Tasks) =====
+
+def create_task(title: str, description: str, assigned_to: int,
+                assigned_by: int, deadline: str = None) -> int:
+    """Yangi vazifa yaratish. deadline — ISO format yoki None."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO tasks (title, description, assigned_to, assigned_by, deadline) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (title.strip(), (description or None), assigned_to, assigned_by, deadline)
+        )
+        return cursor.lastrowid
+
+
+def get_task(task_id: int):
+    """Bitta vazifa + tayinlovchi va xodim ismlari bilan."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT t.*,
+                   emp.full_name AS assigned_to_name,
+                   emp.telegram_id AS assigned_to_tg,
+                   bys.full_name AS assigned_by_name,
+                   bys.telegram_id AS assigned_by_tg
+            FROM tasks t
+            LEFT JOIN employees emp ON t.assigned_to = emp.id
+            LEFT JOIN employees bys ON t.assigned_by = bys.id
+            WHERE t.id = ?
+            """,
+            (task_id,)
+        ).fetchone()
+
+
+def get_open_tasks(employee_id: int):
+    """Xodimning hozirgi ochiq vazifalari."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT t.*, bys.full_name AS assigned_by_name
+            FROM tasks t
+            LEFT JOIN employees bys ON t.assigned_by = bys.id
+            WHERE t.assigned_to = ? AND t.status = 'open'
+            ORDER BY t.created_at DESC
+            """,
+            (employee_id,)
+        ).fetchall()
+
+
+def get_recent_tasks_for_employee(employee_id: int, limit: int = 20):
+    """Xodimning so'nggi vazifalari (har qanday holatda)."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT t.*, bys.full_name AS assigned_by_name
+            FROM tasks t
+            LEFT JOIN employees bys ON t.assigned_by = bys.id
+            WHERE t.assigned_to = ?
+            ORDER BY (t.status='open') DESC, t.created_at DESC
+            LIMIT ?
+            """,
+            (employee_id, limit)
+        ).fetchall()
+
+
+def complete_task(task_id: int):
+    """Vazifani tugatilgan deb belgilash."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE tasks SET status='completed', completed_at=datetime('now') "
+            "WHERE id = ? AND status='open'",
+            (task_id,)
+        )
+
+
+def cancel_task(task_id: int):
+    """Vazifani bekor qilish (admin/boss tomonidan)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE tasks SET status='cancelled' WHERE id = ? AND status='open'",
+            (task_id,)
+        )
+
+
+def skip_task(task_id: int):
+    """Vazifa Ketdim chog'ida tugatilmagan deb belgilangani — log yozuvi."""
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO task_skips (task_id) VALUES (?)", (task_id,)
+        )
+
+
+def get_skip_history(task_id: int):
+    """Vazifa qachon-qachon o'tkazib yuborilgan."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT skipped_at FROM task_skips WHERE task_id = ? ORDER BY skipped_at DESC",
+            (task_id,)
+        ).fetchall()
+
+
+def get_open_tasks_with_skips(employee_id: int):
+    """Tugatilmagan vazifalar va har birining o'tkazib yuborilgan kunlari soni.
+    Admin/Boss xodim profilini ko'rganda foydalaniladi.
+    """
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT t.*,
+                   bys.full_name AS assigned_by_name,
+                   (SELECT COUNT(*) FROM task_skips ts WHERE ts.task_id = t.id) AS skip_count,
+                   (SELECT MAX(skipped_at) FROM task_skips ts WHERE ts.task_id = t.id) AS last_skipped_at
+            FROM tasks t
+            LEFT JOIN employees bys ON t.assigned_by = bys.id
+            WHERE t.assigned_to = ? AND t.status = 'open'
+            ORDER BY t.created_at DESC
+            """,
+            (employee_id,)
+        ).fetchall()
