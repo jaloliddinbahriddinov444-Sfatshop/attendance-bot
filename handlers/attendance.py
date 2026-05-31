@@ -159,13 +159,13 @@ async def check_verified(message: Message, state: FSMContext):
                 face_score=token_data["face_score"],
                 late_warning=late_warning,
             ),
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
     else:
         worked_str = _calculate_worked_time(employee["id"])
         await message.answer(
             texts.CHECK_OUT_SUCCESS.format(time=time_str, worked=worked_str),
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
         # Phase 2: ochiq vazifalar bo'lsa, "Hammasini tugatdingizmi?" savolini chiqarish
         from handlers.tasks import maybe_prompt_checkout_tasks

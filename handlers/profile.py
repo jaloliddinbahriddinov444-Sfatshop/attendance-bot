@@ -33,7 +33,7 @@ async def show_profile(message: Message):
             registered=registered,
             admin_badge=admin_badge,
         ),
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
     )
 
 
@@ -51,7 +51,7 @@ async def show_stats(message: Message):
     if not records:
         await message.answer(
             texts.NO_STATS,
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
         return
 
@@ -112,7 +112,7 @@ async def show_stats(message: Message):
             days=len(records), late=late_count, avg=avg_str,
             details="\n".join(details_lines[:15])  # Eng yangi 15 kun
         ),
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
     )
 
 
@@ -128,7 +128,7 @@ async def show_salary(message: Message):
     if not rate or rate == 0:
         await message.answer(
             texts.SALARY_NO_RATE,
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
         return
 
@@ -189,5 +189,5 @@ async def show_salary(message: Message):
 
     await message.answer(
         summary + details,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
     )

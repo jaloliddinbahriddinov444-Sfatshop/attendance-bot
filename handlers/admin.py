@@ -21,12 +21,27 @@ from database import (
     is_month_closed, close_month, reopen_month,
     get_audit_entries, get_all_employees_salary_summary,
     get_monthly_worked_minutes, get_salary_totals_by_type,
-    create_task,
+    create_task, set_role, get_boss,
 )
 from config import MAX_EMPLOYEES
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _admin_kb(actor) -> object:
+    """Hozirgi foydalanuvchiga mos keladigan menyu (Bosh Admin/Admin/Boss)."""
+    uid = actor.from_user.id
+    emp = get_employee_by_telegram_id(uid)
+    role = "employee"
+    if emp:
+        try:
+            role = emp["role"] or "employee"
+        except (KeyError, IndexError):
+            role = "admin" if emp["is_admin"] else "employee"
+    if role == "boss":
+        return kb.boss_panel_kb()
+    return kb.admin_menu_kb(is_bosh_admin=(role == "bosh_admin"))
 
 
 def _is_admin(message: Message) -> bool:
@@ -40,7 +55,7 @@ async def admin_menu(message: Message, state: FSMContext):
         await message.answer(texts.NO_PERMISSION)
         return
     await state.clear()
-    await message.answer(texts.ADMIN_MENU, reply_markup=kb.admin_menu_kb())
+    await message.answer(texts.ADMIN_MENU, reply_markup=_admin_kb(message))
 
 
 # ===== Xodimlar ro'yxati =====
@@ -451,7 +466,7 @@ async def admin_att_save_time(message: Message, state: FSMContext):
         texts.ADMIN_ATT_SAVED.format(
             name=emp["full_name"], action=action_name, time=time_str
         ),
-        reply_markup=kb.admin_menu_kb()
+        reply_markup=_admin_kb(message)
     )
 
 
@@ -536,14 +551,14 @@ async def admin_rate_save(message: Message, state: FSMContext):
     emp = get_employee_by_id(emp_id)
     if not emp:
         await state.clear()
-        await message.answer("❌ Xodim topilmadi.", reply_markup=kb.admin_menu_kb())
+        await message.answer("❌ Xodim topilmadi.", reply_markup=_admin_kb(message))
         return
 
     set_hourly_rate(emp_id, rate)
     await state.clear()
     await message.answer(
         texts.ADMIN_RATE_SAVED.format(name=emp["full_name"], rate=rate),
-        reply_markup=kb.admin_menu_kb()
+        reply_markup=_admin_kb(message)
     )
 
 
@@ -772,7 +787,7 @@ async def _do_save_salary(message: Message, state: FSMContext, bot: Bot, data: d
             name=data["sal_emp_name"],
             amount=data["sal_amount"], reason=reason
         ),
-        reply_markup=kb.admin_menu_kb()
+        reply_markup=_admin_kb(message)
     )
 
     # Bildirishnoma
@@ -896,7 +911,7 @@ async def admin_salary_cancel_save(message: Message, state: FSMContext, bot: Bot
             emoji=type_info[0], type_name=type_info[1],
             amount=data["sal_cancel_amount"], cancel_reason=cancel_reason
         ),
-        reply_markup=kb.admin_menu_kb()
+        reply_markup=_admin_kb(message)
     )
 
     # Bildirishnoma
@@ -1044,7 +1059,7 @@ async def admin_salary_report(call: CallbackQuery, state: FSMContext, bot: Bot):
     await call.message.answer_document(
         BufferedInputFile(file_bytes, filename=f"ish_haqqi_{year}_{month:02d}.xlsx"),
         caption=texts.SAL_REPORT_DONE.format(month=texts.MONTHS_UZ[month], year=year),
-        reply_markup=kb.admin_menu_kb()
+        reply_markup=_admin_kb(call)
     )
 
 
@@ -1164,9 +1179,10 @@ async def admin_close_month_no(call: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == texts.BTN_ADMIN_TASKS)
 async def task_pick_employee(message: Message, state: FSMContext):
-    """Admin "Vazifa berish" tugmasini bosdi — xodim tanlash."""
+    """Admin yoki Boss "Vazifa berish" tugmasini bosdi — xodim tanlash."""
+    from roles import can_assign_tasks
     me = get_employee_by_telegram_id(message.from_user.id)
-    if not me or not me["is_admin"]:
+    if not me or not can_assign_tasks(me):
         await message.answer(texts.NO_PERMISSION)
         return
 
@@ -1219,7 +1235,7 @@ async def task_title_handler(message: Message, state: FSMContext):
     if message.text == texts.BTN_CANCEL:
         await state.clear()
         await message.answer(texts.CANCELLED,
-                             reply_markup=kb.admin_menu_kb())
+                             reply_markup=_admin_kb(message))
         return
     if len(title) < 3:
         await message.answer(texts.ADMIN_TASK_TITLE_SHORT)
@@ -1238,7 +1254,7 @@ async def task_description_handler(message: Message, state: FSMContext):
     if message.text == texts.BTN_CANCEL:
         await state.clear()
         await message.answer(texts.CANCELLED,
-                             reply_markup=kb.admin_menu_kb())
+                             reply_markup=_admin_kb(message))
         return
 
     if message.text == texts.BTN_TASK_SKIP_DESCRIPTION:
@@ -1285,7 +1301,7 @@ async def task_deadline_handler(message: Message, state: FSMContext, bot: Bot):
     if message.text == texts.BTN_CANCEL:
         await state.clear()
         await message.answer(texts.CANCELLED,
-                             reply_markup=kb.admin_menu_kb())
+                             reply_markup=_admin_kb(message))
         return
 
     if message.text == texts.BTN_TASK_SKIP_DEADLINE:
@@ -1323,7 +1339,7 @@ async def task_deadline_handler(message: Message, state: FSMContext, bot: Bot):
             deadline=deadline_str,
             desc=desc_str,
         ),
-        reply_markup=kb.admin_menu_kb()
+        reply_markup=_admin_kb(message)
     )
 
     # Xodimga bildirishnoma
@@ -1336,3 +1352,110 @@ async def task_deadline_handler(message: Message, state: FSMContext, bot: Bot):
     await _send_notification(bot, data["task_emp_telegram"], notify_text)
 
     await state.clear()
+
+
+# ===== Phase 3A: Bosh Admin tomonidan Boss tayinlash =====
+
+@router.message(F.text == texts.BTN_ADMIN_BOSS_ASSIGN)
+async def admin_boss_pick(message: Message, state: FSMContext):
+    """Bosh Admin Boss tayinlash tugmasini bosdi."""
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not me or me["role"] != "bosh_admin":
+        await message.answer(texts.ADMIN_BOSS_ONLY_BOSH)
+        return
+
+    await state.clear()
+    current_boss = get_boss()
+    current_line = (
+        texts.ADMIN_BOSS_CURRENT.format(name=current_boss["full_name"])
+        if current_boss else texts.ADMIN_BOSS_NONE_YET
+    )
+
+    # Adminlar va Bosh Admin'ni ham ro'yxatdan chiqarmaymiz —
+    # kerak bo'lsa adminni Boss qilish mumkin. Faqat o'zini chiqarib qo'yamiz.
+    employees = [e for e in get_all_employees(active_only=True)
+                 if e["id"] != me["id"]]
+    if not employees:
+        await message.answer("❌ Tanlash uchun xodim yo'q.",
+                             reply_markup=_admin_kb(message))
+        return
+
+    await message.answer(
+        texts.ADMIN_BOSS_PICK.format(current=current_line),
+        reply_markup=kb.salary_employees_kb(employees, prefix="boss_pick")
+    )
+
+
+@router.callback_query(F.data.startswith("boss_pick:"))
+async def admin_boss_pick_callback(call: CallbackQuery, state: FSMContext):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or me["role"] != "bosh_admin":
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    if parts[1] == "cancel":
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    try:
+        emp_id = int(parts[1])
+    except ValueError:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+    if emp["role"] == "bosh_admin":
+        await call.answer("❌ Bosh Admin Boss bo'la olmaydi.", show_alert=True)
+        return
+
+    current_boss = get_boss()
+    warning = ""
+    if current_boss and current_boss["id"] != emp["id"]:
+        warning = texts.ADMIN_BOSS_WARNING_REPLACE.format(old=current_boss["full_name"])
+
+    await call.message.edit_text(
+        texts.ADMIN_BOSS_CONFIRM.format(name=emp["full_name"], warning=warning),
+        reply_markup=kb.assign_boss_confirm_kb(emp_id)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("boss_set:"))
+async def admin_boss_set_confirm(call: CallbackQuery, bot: Bot):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or me["role"] != "bosh_admin":
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    if parts[1] != "yes":
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    try:
+        emp_id = int(parts[2])
+    except (IndexError, ValueError):
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    # Eski Bossni xodim qilamiz
+    current_boss = get_boss()
+    if current_boss and current_boss["id"] != emp_id:
+        set_role(current_boss["id"], "employee")
+        await _send_notification(bot, current_boss["telegram_id"],
+                                 texts.BOSS_NOTIFY_REMOVED)
+
+    # Yangi Boss
+    set_role(emp_id, "boss")
+    await call.message.edit_text(texts.ADMIN_BOSS_DONE.format(name=emp["full_name"]))
+    await call.answer("✅")
+    await _send_notification(bot, emp["telegram_id"], texts.BOSS_NOTIFY_ASSIGNED)

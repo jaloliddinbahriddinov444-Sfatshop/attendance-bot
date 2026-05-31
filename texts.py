@@ -556,3 +556,74 @@ TASK_NOTIFY_SKIPPED = (
 PROFILE_OPEN_TASKS_HEADER = "\n\n📝 <b>Tugatilmagan vazifalar:</b>"
 PROFILE_OPEN_TASK_LINE = "\n• <b>{title}</b> (tayinlagan: {by}, yaratilgan: {created}){skips}"
 PROFILE_TASK_SKIPS_FRAGMENT = " — <i>{count} marta o'tkazilgan</i>"
+
+
+# ===== Boss panel (Phase 3A) =====
+
+BTN_BOSS_PANEL = "🏆 Boss panel"
+BTN_BOSS_ATTENDANCE = "📋 Davomat ma'lumotlari"
+BTN_BOSS_FINANCE = "💰 Moliya bo'limi"
+BTN_ADMIN_BOSS_ASSIGN = "🏆 Boss tayinlash"
+
+BOSS_PANEL_MENU = (
+    "🏆 <b>Boss panel</b>\n\n"
+    "Quyidagi bo'limlardan birini tanlang:"
+)
+BOSS_FINANCE_COMING = "💰 <b>Moliya bo'limi</b> tez orada qo'shiladi (4-bosqich)."
+BOSS_ATTENDANCE_EMPTY = "❌ Faol xodimlar yo'q."
+BOSS_ATTENDANCE_HEADER = (
+    "📋 <b>Bugungi davomat ma'lumotlari</b>\n"
+    "🗓 {date}\n\n"
+    "Tafsilot uchun xodimni tanlang:"
+)
+BOSS_EMP_STATUS_IN = "✅ {name} — keldi {time}"
+BOSS_EMP_STATUS_OUT = "🔴 {name} — ketdi {time}"
+BOSS_EMP_STATUS_NONE = "❌ {name} — kelmagan"
+
+# Xodim detali (Boss/Bosh Admin uchun)
+EMP_DETAIL_HEADER = (
+    "👤 <b>{name}</b>\n"
+    "📋 Lavozim: <i>{position}</i>\n"
+    "📱 {phone}\n"
+    "{role_badge}\n"
+)
+EMP_DETAIL_TODAY = "\n📅 <b>Bugungi davomat:</b>\n{today}"
+EMP_DETAIL_TODAY_NONE = "— hech qanday yozuv yo'q —"
+EMP_DETAIL_TODAY_LINE = "  • {emoji} {when} — {kind}"
+EMP_DETAIL_MONTH = "\n\n🕒 <b>Bu oyda ishlangan:</b> <i>{hours} soat {minutes} daqiqa</i>"
+EMP_DETAIL_SALARY_HEADER = "\n\n💰 <b>Bu oydagi ish haqqi:</b>"
+EMP_DETAIL_SALARY_LINE = "\n  {emoji} <b>{type_name}</b>: {sign}{amount:,} so'm — <i>{reason}</i>"
+EMP_DETAIL_SALARY_NONE = "\n— yozuvlar yo'q —"
+EMP_DETAIL_TASKS_HEADER = "\n\n📝 <b>Tugatilmagan vazifalar:</b>"
+EMP_DETAIL_TASK_LINE = "\n  • <b>{title}</b> (tayinlagan: {by}, yaratilgan: {created}){skips}"
+EMP_DETAIL_TASK_SKIPS = " — <i>{count} marta o'tkazilgan</i>"
+EMP_DETAIL_TASKS_NONE = "\n— yo'q —"
+
+# Bosh Admin: Boss tayinlash
+ADMIN_BOSS_PICK = (
+    "🏆 <b>Boss tayinlash</b>\n\n"
+    "Bossni tayinlash uchun xodimni tanlang.\n\n"
+    "{current}"
+)
+ADMIN_BOSS_CURRENT = "ℹ️ Joriy Boss: <b>{name}</b>\n(Yangi tayinlasangiz, eski Boss xodim bo'lib qaytadi.)"
+ADMIN_BOSS_NONE_YET = "ℹ️ Hozir Boss tayinlanmagan."
+ADMIN_BOSS_CONFIRM = (
+    "🏆 <b>Bossni tayinlash</b>\n\n"
+    "<b>{name}</b>'ni Boss qilib tayinlamoqchimisiz?\n"
+    "{warning}"
+)
+ADMIN_BOSS_WARNING_REPLACE = "\n⚠️ Joriy Boss (<b>{old}</b>) xodim bo'lib qaytadi."
+ADMIN_BOSS_DONE = "✅ <b>{name}</b> endi Boss."
+ADMIN_BOSS_REMOVE_PROMPT = (
+    "🏆 <b>Bossni o'chirish</b>\n\n"
+    "Joriy Boss: <b>{name}</b>\n\n"
+    "O'chirilsa, oddiy xodim bo'ladi. Davom etamizmi?"
+)
+ADMIN_BOSS_REMOVED = "✅ Boss roli o'chirildi."
+ADMIN_BOSS_ONLY_BOSH = "❌ Faqat Bosh Admin Boss tayinlay oladi."
+BOSS_NOTIFY_ASSIGNED = (
+    "🏆 <b>Tabriklaymiz!</b>\n\n"
+    "Sizga Boss roli berildi.\n"
+    "«🏆 Boss panel» tugmasini bosib bo'limlarni ko'rishingiz mumkin."
+)
+BOSS_NOTIFY_REMOVED = "ℹ️ Sizning Boss rolingiz o'chirildi."

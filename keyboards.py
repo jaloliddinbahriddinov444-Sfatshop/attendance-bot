@@ -10,12 +10,14 @@ def remove_kb():
     return ReplyKeyboardRemove()
 
 
-def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
+def main_menu_kb(is_admin: bool = False, is_boss: bool = False) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text=texts.BTN_ATTENDANCE)],
         [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
         [KeyboardButton(text=texts.BTN_TASKS), KeyboardButton(text=texts.BTN_SALARY)],
     ]
+    if is_boss:
+        rows.append([KeyboardButton(text=texts.BTN_BOSS_PANEL)])
     if is_admin:
         rows.append([KeyboardButton(text=texts.BTN_ADMIN)])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
@@ -68,23 +70,23 @@ def wifi_confirm_kb() -> ReplyKeyboardMarkup:
     )
 
 
-def admin_menu_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_LIST),
-             KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
-            [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
-             KeyboardButton(text=texts.BTN_ADMIN_RATES)],
-            [KeyboardButton(text=texts.BTN_ADMIN_SALARY),
-             KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
-            [KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
-            [KeyboardButton(text=texts.BTN_ADMIN_REMOVE),
-             KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
-            [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
-            [KeyboardButton(text=texts.BTN_BACK)],
-        ],
-        resize_keyboard=True
-    )
+def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
+    rows = [
+        [KeyboardButton(text=texts.BTN_ADMIN_LIST),
+         KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
+        [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
+         KeyboardButton(text=texts.BTN_ADMIN_RATES)],
+        [KeyboardButton(text=texts.BTN_ADMIN_SALARY),
+         KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
+        [KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
+        [KeyboardButton(text=texts.BTN_ADMIN_REMOVE),
+         KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
+    ]
+    if is_bosh_admin:
+        rows.append([KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)])
+    rows.append([KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)])
+    rows.append([KeyboardButton(text=texts.BTN_BACK)])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
 def admin_settings_kb() -> ReplyKeyboardMarkup:
@@ -229,4 +231,39 @@ def checkout_tasks_yes_no_kb() -> InlineKeyboardMarkup:
                               callback_data="ck_tasks:yes"),
          InlineKeyboardButton(text="❌ Yo'q, tugatmadim",
                               callback_data="ck_tasks:no")],
+    ])
+
+
+# ===== Boss panel (Phase 3A) =====
+
+def boss_panel_kb() -> ReplyKeyboardMarkup:
+    """Boss bo'lim menyusi."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_BOSS_ATTENDANCE)],
+            [KeyboardButton(text=texts.BTN_ADMIN_TASKS),
+             KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
+            [KeyboardButton(text=texts.BTN_BACK)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def assign_boss_confirm_kb(emp_id: int) -> InlineKeyboardMarkup:
+    """Boss tayinlashni tasdiqlash (Bosh Admin uchun)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, Boss qil",
+                              callback_data=f"boss_set:yes:{emp_id}"),
+         InlineKeyboardButton(text="❌ Bekor",
+                              callback_data=f"boss_set:no:{emp_id}")],
+    ])
+
+
+def remove_boss_confirm_kb() -> InlineKeyboardMarkup:
+    """Mavjud Bossni o'chirish tasdig'i."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, o'chir",
+                              callback_data="boss_remove:yes"),
+         InlineKeyboardButton(text="❌ Bekor",
+                              callback_data="boss_remove:no")],
     ])

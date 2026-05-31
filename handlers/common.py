@@ -20,7 +20,7 @@ async def cmd_start(message: Message, state: FSMContext):
     if employee:
         await message.answer(
             texts.WELCOME_BACK.format(name=employee["full_name"]),
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
         return
 
@@ -45,7 +45,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
     if employee:
         await message.answer(
             texts.CANCELLED,
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
     else:
         await message.answer(texts.CANCELLED, reply_markup=kb.remove_kb())
@@ -60,7 +60,7 @@ async def go_back(message: Message, state: FSMContext):
         return
     await message.answer(
         texts.MAIN_MENU,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
     )
 
 
@@ -73,5 +73,5 @@ async def unknown_text(message: Message):
         return
     await message.answer(
         texts.UNKNOWN_COMMAND,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
     )
