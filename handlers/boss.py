@@ -36,15 +36,6 @@ async def boss_panel(message: Message, state: FSMContext):
     await message.answer(texts.BOSS_PANEL_MENU, reply_markup=kb.boss_panel_kb())
 
 
-@router.message(F.text == texts.BTN_BOSS_FINANCE)
-async def boss_finance_placeholder(message: Message):
-    me = get_employee_by_telegram_id(message.from_user.id)
-    if not me or not _require_boss_or_bosh(me):
-        await message.answer(texts.NO_PERMISSION)
-        return
-    await message.answer(texts.BOSS_FINANCE_COMING)
-
-
 @router.message(F.text == texts.BTN_BOSS_ATTENDANCE)
 async def boss_attendance(message: Message):
     me = get_employee_by_telegram_id(message.from_user.id)

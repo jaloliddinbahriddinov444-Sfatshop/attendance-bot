@@ -41,3 +41,10 @@ class TaskCreate(StatesGroup):
     entering_title = State()
     entering_description = State()
     entering_deadline = State()
+
+
+class FinanceEntry(StatesGroup):
+    """Boss/Bosh Admin moliya yozuvi."""
+    entering_other_category = State()
+    entering_amount = State()
+    entering_note = State()

@@ -627,3 +627,64 @@ BOSS_NOTIFY_ASSIGNED = (
     "«🏆 Boss panel» tugmasini bosib bo'limlarni ko'rishingiz mumkin."
 )
 BOSS_NOTIFY_REMOVED = "ℹ️ Sizning Boss rolingiz o'chirildi."
+
+
+# ===== Moliya bo'limi (Phase 4) =====
+
+# Turkumlar: {key: (emoji, display_name)}
+FINANCE_CATEGORIES = {
+    "food":          ("🍔", "Oziq-ovqat"),
+    "transport":     ("🚗", "Transport"),
+    "salary_pay":    ("💰", "Ish haqi to'lovi"),
+    "rent":          ("🏠", "Ijara"),
+    "product_sale":  ("📦", "Mahsulot sotuvi"),
+    "supplies":      ("📋", "Xom ashyo / mahsulot xaridi"),
+    "utilities":     ("💡", "Kommunal"),
+    "other":         ("📝", "Boshqa"),
+}
+
+# Tugmalar
+BTN_FINANCE_INCOME = "➕ Kirim qo'shish"
+BTN_FINANCE_EXPENSE = "➖ Chiqim qo'shish"
+BTN_FINANCE_SUMMARY = "📊 Bu oylik xulosa"
+BTN_FINANCE_EXCEL = "📥 Excel hisobot"
+BTN_FINANCE_NOTE_SKIP = "⏭ Izohsiz"
+BTN_FINANCE_CATEGORY_OTHER = "📝 Boshqa (qo'lda izoh)"
+
+# Dialog
+FINANCE_MENU = (
+    "💰 <b>Moliya bo'limi</b>\n\n"
+    "Bu sizning <i>shaxsiy daftaringiz</i> — boshqa hech kim ko'rmaydi.\n"
+    "Quyidagilardan birini tanlang:"
+)
+FINANCE_PICK_CATEGORY_INCOME = "➕ <b>Kirim qo'shish</b>\n\nTurkumini tanlang:"
+FINANCE_PICK_CATEGORY_EXPENSE = "➖ <b>Chiqim qo'shish</b>\n\nTurkumini tanlang:"
+FINANCE_ASK_AMOUNT = (
+    "{emoji} <b>{type_name}</b> · {category}\n\n"
+    "Summani yozing (faqat raqam, masalan: 250000):"
+)
+FINANCE_AMOUNT_INVALID = "⚠️ Summa noto'g'ri. Faqat musbat raqam yozing (masalan: 250000)."
+FINANCE_ASK_NOTE = (
+    "{emoji} <b>{type_name}</b> · {category} · <b>{amount:,} so'm</b>\n\n"
+    "Izoh qo'shasizmi? Yozing yoki pastdagi tugmani bosing."
+)
+FINANCE_SAVED = (
+    "✅ <b>Saqlandi</b>\n\n"
+    "{type_emoji} <b>{type_name}</b>\n"
+    "{cat_emoji} Turkum: <i>{category}</i>\n"
+    "💵 Summa: <b>{amount:,} so'm</b>\n"
+    "📅 Sana: <i>{when}</i>{note_line}"
+)
+FINANCE_NOTE_FRAGMENT = "\n💬 Izoh: <i>{note}</i>"
+
+FINANCE_SUMMARY_HEADER = "📊 <b>{month} {year}</b> — sizning moliya xulosangiz\n"
+FINANCE_SUMMARY_EMPTY = "\nℹ️ Bu oyda yozuvlar yo'q."
+FINANCE_SUMMARY_INCOME = "\n\n➕ <b>Kirimlar</b> — jami: <b>{total:,} so'm</b>"
+FINANCE_SUMMARY_EXPENSE = "\n\n➖ <b>Chiqimlar</b> — jami: <b>{total:,} so'm</b>"
+FINANCE_SUMMARY_NET_POS = "\n\n💚 <b>Foyda:</b> +{net:,} so'm"
+FINANCE_SUMMARY_NET_NEG = "\n\n🔻 <b>Zarar:</b> {net:,} so'm"
+FINANCE_SUMMARY_NET_ZERO = "\n\n⚖️ <b>Hisob:</b> 0 so'm"
+FINANCE_SUMMARY_CAT_LINE = "\n  {emoji} {category}: {total:,} so'm ({cnt})"
+
+FINANCE_EXCEL_EMPTY = "ℹ️ Bu oyda yozuvlar yo'q — Excel yaratish ma'nosiz."
+FINANCE_NO_PERMISSION = "❌ Moliya bo'limi faqat Boss va Bosh Admin uchun."

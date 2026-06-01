@@ -83,7 +83,8 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
          KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
     ]
     if is_bosh_admin:
-        rows.append([KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)])
+        rows.append([KeyboardButton(text=texts.BTN_BOSS_FINANCE),
+                     KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)])
     rows.append([KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)])
     rows.append([KeyboardButton(text=texts.BTN_BACK)])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
@@ -267,3 +268,47 @@ def remove_boss_confirm_kb() -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="❌ Bekor",
                               callback_data="boss_remove:no")],
     ])
+
+
+# ===== Moliya bo'limi (Phase 4) =====
+
+def finance_menu_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_FINANCE_INCOME),
+             KeyboardButton(text=texts.BTN_FINANCE_EXPENSE)],
+            [KeyboardButton(text=texts.BTN_FINANCE_SUMMARY),
+             KeyboardButton(text=texts.BTN_FINANCE_EXCEL)],
+            [KeyboardButton(text=texts.BTN_BACK)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def finance_categories_kb(entry_type: str) -> InlineKeyboardMarkup:
+    """Turkum tanlash (kirim yoki chiqim uchun bir xil ro'yxat)."""
+    rows = []
+    pair = []
+    for key, (emoji, name) in texts.FINANCE_CATEGORIES.items():
+        pair.append(InlineKeyboardButton(
+            text=f"{emoji} {name}",
+            callback_data=f"fin_cat:{entry_type}:{key}"
+        ))
+        if len(pair) == 2:
+            rows.append(pair)
+            pair = []
+    if pair:
+        rows.append(pair)
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL,
+                                      callback_data=f"fin_cat:{entry_type}:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def finance_note_skip_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_FINANCE_NOTE_SKIP)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )

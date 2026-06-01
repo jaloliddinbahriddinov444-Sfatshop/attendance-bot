@@ -118,6 +118,19 @@ def init_db():
             FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_task_skips_task ON task_skips(task_id);
+
+        CREATE TABLE IF NOT EXISTS finance_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            entry_type TEXT NOT NULL,
+            category TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            note TEXT,
+            entry_date TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (owner_id) REFERENCES employees (id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_finance_owner_date
+            ON finance_entries(owner_id, entry_date);
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -739,3 +752,73 @@ def get_open_tasks_with_skips(employee_id: int):
             """,
             (employee_id,)
         ).fetchall()
+
+
+# ===== Moliya bo'limi (Phase 4) =====
+# Konventsiya: har Boss/Bosh Admin uchun alohida daftar (owner_id orqali ajratiladi).
+
+def create_finance_entry(owner_id: int, entry_type: str, category: str,
+                         amount: int, note: str = None) -> int:
+    """Kirim yoki chiqim yozuvi qo'shish.
+    entry_type: 'income' yoki 'expense'.
+    """
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO finance_entries "
+            "(owner_id, entry_type, category, amount, note) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (owner_id, entry_type, category, amount, (note or None))
+        )
+        return cursor.lastrowid
+
+
+def get_monthly_finance_entries(owner_id: int, year: int, month: int):
+    """Berilgan oydagi barcha yozuvlar (Toshkent vaqtiga ko'ra)."""
+    ystr = f"{year:04d}"
+    mstr = f"{month:02d}"
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM finance_entries
+            WHERE owner_id = ?
+              AND strftime('%Y', entry_date, '+5 hours') = ?
+              AND strftime('%m', entry_date, '+5 hours') = ?
+            ORDER BY entry_date ASC
+            """,
+            (owner_id, ystr, mstr)
+        ).fetchall()
+
+
+def get_monthly_finance_summary(owner_id: int, year: int, month: int):
+    """Oylik xulosa: kirim/chiqim turkumlar bo'yicha."""
+    ystr = f"{year:04d}"
+    mstr = f"{month:02d}"
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT entry_type, category, SUM(amount) AS total, COUNT(*) AS cnt
+            FROM finance_entries
+            WHERE owner_id = ?
+              AND strftime('%Y', entry_date, '+5 hours') = ?
+              AND strftime('%m', entry_date, '+5 hours') = ?
+            GROUP BY entry_type, category
+            ORDER BY entry_type, total DESC
+            """,
+            (owner_id, ystr, mstr)
+        ).fetchall()
+    income_total = 0
+    expense_total = 0
+    by_cat = {"income": [], "expense": []}
+    for r in rows:
+        if r["entry_type"] == "income":
+            income_total += r["total"]
+        else:
+            expense_total += r["total"]
+        by_cat[r["entry_type"]].append(dict(r))
+    return {
+        "income_total": income_total,
+        "expense_total": expense_total,
+        "net": income_total - expense_total,
+        "by_category": by_cat,
+    }
