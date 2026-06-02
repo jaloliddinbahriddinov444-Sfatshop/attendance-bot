@@ -19,6 +19,11 @@ MAX_EMPLOYEES_REACHED = (
     "Yangi xodim qo'shish uchun admin bilan bog'laning."
 )
 
+ACCOUNT_DEACTIVATED = (
+    "🚫 <b>Hisobingiz faolsizlantirilgan.</b>\n\n"
+    "Botdan foydalanish to'xtatilgan. Savollar bo'lsa admin bilan bog'laning."
+)
+
 CANCELLED = "❌ Amal bekor qilindi.\n\nAsosiy menyuga qaytdingiz."
 
 UNKNOWN_COMMAND = "🤔 Tushunmadim. Iltimos, menyudagi tugmalardan foydalaning."
@@ -561,7 +566,7 @@ PROFILE_TASK_SKIPS_FRAGMENT = " — <i>{count} marta o'tkazilgan</i>"
 # ===== Boss panel (Phase 3A) =====
 
 BTN_BOSS_PANEL = "🏆 Boss panel"
-BTN_BOSS_ATTENDANCE = "📋 Davomat ma'lumotlari"
+BTN_BOSS_ATTENDANCE = "👥 Xodimlar ma'lumotlari"
 BTN_BOSS_FINANCE = "💰 Moliya bo'limi"
 BTN_ADMIN_BOSS_ASSIGN = "🏆 Boss tayinlash"
 
@@ -572,7 +577,7 @@ BOSS_PANEL_MENU = (
 BOSS_FINANCE_COMING = "💰 <b>Moliya bo'limi</b> tez orada qo'shiladi (4-bosqich)."
 BOSS_ATTENDANCE_EMPTY = "❌ Faol xodimlar yo'q."
 BOSS_ATTENDANCE_HEADER = (
-    "📋 <b>Bugungi davomat ma'lumotlari</b>\n"
+    "👥 <b>Xodimlar ma'lumotlari</b>\n"
     "🗓 {date}\n\n"
     "Tafsilot uchun xodimni tanlang:"
 )

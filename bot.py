@@ -35,6 +35,11 @@ async def main():
     )
     dp = Dispatcher(storage=MemoryStorage())
 
+    # Faolsizlantirilgan xodimlarni bloklash (filtrlardan oldin ishlaydi)
+    from middlewares import BlockDeactivatedMiddleware
+    dp.message.outer_middleware(BlockDeactivatedMiddleware())
+    dp.callback_query.outer_middleware(BlockDeactivatedMiddleware())
+
     # Routerlar tartibi muhim — common eng oxirida
     dp.include_routers(
         registration.router,

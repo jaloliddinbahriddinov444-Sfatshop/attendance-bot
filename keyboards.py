@@ -11,13 +11,23 @@ def remove_kb():
 
 
 def main_menu_kb(is_admin: bool = False, is_boss: bool = False) -> ReplyKeyboardMarkup:
+    # Boss uchun asosiy menyu = faqat Boss bo'limlari (xodim tugmalarisiz,
+    # alohida "Boss panel" tugmasisiz). Boss uchun bu menyu — uy menyusi.
+    if is_boss:
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text=texts.BTN_BOSS_ATTENDANCE)],
+                [KeyboardButton(text=texts.BTN_ADMIN_TASKS),
+                 KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
+            ],
+            resize_keyboard=True,
+        )
+
     rows = [
         [KeyboardButton(text=texts.BTN_ATTENDANCE)],
         [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
         [KeyboardButton(text=texts.BTN_TASKS), KeyboardButton(text=texts.BTN_SALARY)],
     ]
-    if is_boss:
-        rows.append([KeyboardButton(text=texts.BTN_BOSS_PANEL)])
     if is_admin:
         rows.append([KeyboardButton(text=texts.BTN_ADMIN)])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)

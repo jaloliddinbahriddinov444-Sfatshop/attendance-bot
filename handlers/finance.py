@@ -37,13 +37,13 @@ def _can_use_finance(emp) -> bool:
 
 
 def _back_kb(emp):
-    """Moliyadan chiqqanda qaytadigan menyu (Bosh Admin → admin menyu, Boss → Boss panel)."""
+    """Moliyadan chiqqanda qaytadigan menyu (Bosh Admin → admin menyu, Boss → Boss uy menyusi)."""
     try:
         role = emp["role"]
     except (KeyError, IndexError):
         role = "employee"
     if role == "boss":
-        return kb.boss_panel_kb()
+        return kb.main_menu_kb(is_boss=True)
     if role == "bosh_admin":
         return kb.admin_menu_kb(is_bosh_admin=True)
     return kb.main_menu_kb(is_admin=bool(emp["is_admin"]))
