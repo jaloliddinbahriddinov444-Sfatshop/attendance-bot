@@ -693,3 +693,44 @@ FINANCE_SUMMARY_CAT_LINE = "\n  {emoji} {category}: {total:,} so'm ({cnt})"
 
 FINANCE_EXCEL_EMPTY = "ℹ️ Bu oyda yozuvlar yo'q — Excel yaratish ma'nosiz."
 FINANCE_NO_PERMISSION = "❌ Moliya bo'limi faqat Boss va Bosh Admin uchun."
+
+
+# ===== Ofis IP boshqaruvi (dinamik whitelist) =====
+BTN_OFFICE_IP = "📍 Ofis IP boshqaruvi"
+BTN_OFFICE_IP_ADD = "➕ Joriy IP'ni qo'shish"
+BTN_OFFICE_IP_LIST = "📋 Ofis IP'lari ro'yxati"
+
+OFFICE_IP_MENU = (
+    "📍 <b>Ofis IP boshqaruvi</b>\n\n"
+    "Bot xodim ofis Wi-Fi'sida ekanini public IP orqali tekshiradi. "
+    "Provayder IP'ni vaqti-vaqti bilan o'zgartiradi — shunda quyidagi tugma "
+    "orqali yangi IP'ni qo'shasiz (Render sozlamalariga tegmasdan).\n\n"
+    "➕ <b>Joriy IP'ni qo'shish</b> — havolani <u>ofis Wi-Fi'sida turib</u> oching, "
+    "bot o'sha IP'ni avtomatik qo'shadi.\n"
+    "📋 <b>Ro'yxat</b> — qo'shilgan IP'larni ko'rish va o'chirish."
+)
+OFFICE_IP_SETLINK = (
+    "📍 Quyidagi havolani <b>ofis Wi-Fi'sida turib</b> oching — joriy IP "
+    "avtomatik ofis IP sifatida qo'shiladi.\n\n"
+    "⚠️ Mobil internetda ochmang, aks holda noto'g'ri IP qo'shiladi.\n"
+    "Havola 5 daqiqa amal qiladi."
+)
+OFFICE_IP_LIST_HEADER = (
+    "📋 <b>Ofis IP'lari</b> (jami {n} ta)\n\nO'chirish uchun tegishli tugmani bosing:"
+)
+OFFICE_IP_LIST_EMPTY = (
+    "📋 Hozircha bironta ofis IP'si yo'q.\n\n"
+    "⚠️ Bu holatda bot HAMMA IP'ni qabul qiladi (filtr o'chiq). "
+    "Xavfsizlik uchun ofisda turib «➕ Joriy IP'ni qo'shish» tugmasini bosing."
+)
+SETIP_ADDED = "✅ Yangi ofis IP qo'shildi: <code>{ip}</code>"
+SETIP_ALREADY = "ℹ️ Bu IP allaqachon ro'yxatda: <code>{ip}</code>"
+IP_REMOVED = "🗑 IP o'chirildi: <code>{ip}</code>"
+IP_IGNORED = "❌ E'tiborsiz qoldirildi."
+IP_CHANGED_ALERT = (
+    "⚠️ <b>Ofis IP'si o'zgargan bo'lishi mumkin</b>\n\n"
+    "<b>{name}</b> hozir <code>{ip}</code> IP'sidan davomat qilmoqchi, lekin bu IP "
+    "ofis ro'yxatida yo'q.\n\n"
+    "Agar bu HAQIQATAN ofis Wi-Fi'si bo'lsa — «qo'sh»ni bosing. "
+    "Aks holda (xodim uydan yoki mobil internetdan) — e'tiborsiz qoldiring."
+)

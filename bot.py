@@ -12,7 +12,7 @@ from database import init_db
 from services.wifi_verify import start_verify_server
 
 # Handlerlar
-from handlers import common, registration, attendance, profile, admin, tasks, boss, finance
+from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip
 
 
 logging.basicConfig(
@@ -49,14 +49,15 @@ async def main():
         finance.router,
         profile.router,
         tasks.router,
+        office_ip.router,
         common.router,
     )
 
     me = await bot.get_me()
     logger.info("🤖 Bot ishga tushdi: @%s (id=%s)", me.username, me.id)
 
-    # Web serverni ishga tushirish (verify + face)
-    runner = await start_verify_server()
+    # Web serverni ishga tushirish (verify + face + setip)
+    runner = await start_verify_server(bot)
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)

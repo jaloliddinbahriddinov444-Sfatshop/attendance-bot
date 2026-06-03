@@ -95,9 +95,22 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
     if is_bosh_admin:
         rows.append([KeyboardButton(text=texts.BTN_BOSS_FINANCE),
                      KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)])
+        rows.append([KeyboardButton(text=texts.BTN_OFFICE_IP)])
     rows.append([KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)])
     rows.append([KeyboardButton(text=texts.BTN_BACK)])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+def ip_menu_kb() -> ReplyKeyboardMarkup:
+    """Ofis IP boshqaruvi submenyusi (Bosh Admin)."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_OFFICE_IP_ADD)],
+            [KeyboardButton(text=texts.BTN_OFFICE_IP_LIST)],
+            [KeyboardButton(text=texts.BTN_BACK)],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def admin_settings_kb() -> ReplyKeyboardMarkup:

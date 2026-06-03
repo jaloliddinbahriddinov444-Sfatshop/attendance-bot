@@ -11,12 +11,25 @@ import time
 import uuid
 import logging
 from aiohttp import web
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+import texts
 
 logger = logging.getLogger(__name__)
 
 # Tokenlar
 _pending: dict = {}
 TOKEN_EXPIRY = 300  # 5 daqiqa
+
+# Ofis IP belgilash tokenlari (admin "joriy IP qo'shish" oqimi)
+_setip_pending: dict = {}
+
+# Bot obyekti (server ichidan Telegram xabar yuborish uchun) — start_verify_server o'rnatadi
+_bot = None
+
+# Bir xil "yangi IP" ogohlantirishini qayta-qayta yubormaslik uchun (ip -> oxirgi vaqt)
+_notified_ips: dict = {}
+NOTIFY_COOLDOWN = 3600  # bir xil IP uchun soatiga 1 marta
 
 # ===== HTML sahifa: kamera + yuklash =====
 
@@ -220,6 +233,23 @@ Mobil internet yoki boshqa Wi-Fi orqali bo'lmaydi.
 </body></html>"""
 
 
+SETIP_OK_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ofis IP qo'shildi</title>
+<style>body{font-family:-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#e8f5e9;}</style>
+</head><body>
+<div style="font-size:60px;">✅</div>
+<h2 style="color:#2e7d32;">Ofis IP qo'shildi</h2>
+<p style="color:#444;font-size:18px;margin-top:12px;"><b>{ip}</b></p>
+<p style="color:#666;font-size:15px;margin-top:12px;">
+Bu IP endi ofis Wi-Fi'si sifatida tan olinadi. Botga qaytishingiz mumkin.
+</p>
+<p style="color:#999;font-size:13px;margin-top:20px;">
+Eslatma: bu sahifani ofis Wi-Fi'sida ochgan bo'lsangizgina IP to'g'ri bo'ladi.
+</p>
+</body></html>"""
+
+
 # ===== Token boshqaruvi =====
 
 def create_token(employee_id: int, employee_name: str) -> str:
@@ -260,6 +290,47 @@ def _cleanup_expired():
         _pending.pop(t, None)
 
 
+# ===== Ofis IP belgilash (admin "joriy IP qo'shish") =====
+
+def create_setip_token(admin_id: int) -> str:
+    """Admin uchun bir martalik IP-belgilash tokeni."""
+    now = time.time()
+    expired = [t for t, v in _setip_pending.items() if now - v["created_at"] > TOKEN_EXPIRY]
+    for t in expired:
+        _setip_pending.pop(t, None)
+    token = "ip" + uuid.uuid4().hex[:14]
+    _setip_pending[token] = {"admin_id": admin_id, "created_at": now}
+    return token
+
+
+async def _notify_ip_changed(client_ip: str, employee_name: str):
+    """Ro'yxatdagi xodim noma'lum IP'dan urinса — Bosh Adminni xabardor qilish."""
+    if _bot is None:
+        return
+    now = time.time()
+    if now - _notified_ips.get(client_ip, 0) < NOTIFY_COOLDOWN:
+        return
+    _notified_ips[client_ip] = now
+    try:
+        from database import get_bosh_admin
+        ba = get_bosh_admin()
+        if not ba:
+            return
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Ofis IP'si — qo'sh",
+                                  callback_data=f"ipadd:{client_ip}")],
+            [InlineKeyboardButton(text="❌ Yo'q, e'tiborsiz",
+                                  callback_data=f"ipign:{client_ip}")],
+        ])
+        await _bot.send_message(
+            ba["telegram_id"],
+            texts.IP_CHANGED_ALERT.format(name=employee_name, ip=client_ip),
+            reply_markup=markup,
+        )
+    except Exception:
+        logger.exception("IP o'zgarishi haqida ogohlantirishda xato")
+
+
 def _get_client_ip(request: web.Request) -> str:
     """Render orqasidan kelgan haqiqiy client IP'ni olish"""
     # Render load balancer X-Forwarded-For sarlavhasini qo'shadi
@@ -272,12 +343,17 @@ def _get_client_ip(request: web.Request) -> str:
 
 
 def _is_office_ip(client_ip: str) -> bool:
-    """Mijoz IP'si ofis IP'lariga mosligini tekshirish"""
-    from config import OFFICE_PUBLIC_IPS
-    # Agar IP ro'yxati bo'sh — local rejim, hammasi ruxsat etiladi
-    if not OFFICE_PUBLIC_IPS:
+    """Mijoz IP'si ofis IP'lariga mosligini tekshirish (baza orqali — dinamik).
+
+    IP'lar endi `office_ips` jadvalida saqlanadi va admin tomonidan runtime'da
+    yangilanadi (Render env'iga tegmasdan). Ro'yxat bo'sh bo'lsa — local rejim,
+    hamma ruxsat etiladi.
+    """
+    from database import get_office_ips
+    ips = get_office_ips()
+    if not ips:
         return True
-    return client_ip in OFFICE_PUBLIC_IPS
+    return client_ip in ips
 
 
 # ===== Web handlerlar =====
@@ -295,6 +371,7 @@ async def _page_handler(request: web.Request) -> web.Response:
     client_ip = _get_client_ip(request)
     if not _is_office_ip(client_ip):
         logger.warning("Office IP'si emas: %s (xodim=%s)", client_ip, entry["employee_name"])
+        await _notify_ip_changed(client_ip, entry["employee_name"])
         return web.Response(text=NOT_OFFICE_HTML, content_type="text/html")
 
     # Wi-Fi tasdiqlandi (sahifa ochildi = ofis tarmoqda)
@@ -394,6 +471,39 @@ async def _upload_handler(request: web.Request) -> web.Response:
         return web.json_response({"success": False, "error": "Server xatosi. Qayta urinib ko'ring."})
 
 
+async def _setip_handler(request: web.Request) -> web.Response:
+    """Admin ofis Wi-Fi'sida turib ochadi → joriy public IP ofis IP sifatida qo'shiladi."""
+    token = request.match_info.get("token", "")
+    entry = _setip_pending.get(token)
+    if not entry or time.time() - entry["created_at"] > TOKEN_EXPIRY:
+        _setip_pending.pop(token, None)
+        return web.Response(text=EXPIRED_HTML, content_type="text/html")
+
+    _setip_pending.pop(token, None)  # bir martalik
+    client_ip = _get_client_ip(request)
+
+    from database import add_office_ip, office_ip_exists
+    already = office_ip_exists(client_ip)
+    add_office_ip(client_ip, label="admin orqali", added_by=entry["admin_id"])
+    logger.info("Ofis IP belgilandi: %s (admin=%s, already=%s)",
+                client_ip, entry["admin_id"], already)
+
+    # Adminni Telegram orqali xabardor qilish (+ tezkor o'chirish tugmasi)
+    if _bot is not None:
+        try:
+            txt = (texts.SETIP_ALREADY if already else texts.SETIP_ADDED).format(ip=client_ip)
+            del_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🗑 Bu IP'ni o'chirish",
+                                     callback_data=f"ipdel:{client_ip}")
+            ]])
+            await _bot.send_message(entry["admin_id"], txt, reply_markup=del_kb)
+        except Exception:
+            logger.exception("setip xabar yuborishda xato")
+
+    return web.Response(text=SETIP_OK_HTML.replace("{ip}", client_ip),
+                        content_type="text/html")
+
+
 def get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -406,13 +516,17 @@ def get_local_ip() -> str:
         return "192.168.1.1"
 
 
-async def start_verify_server(port: int = None) -> web.AppRunner:
+async def start_verify_server(bot=None, port: int = None) -> web.AppRunner:
     """Web serverni ishga tushirish (Render: PORT env var, local: 9090)"""
-    from config import WEB_PORT, WEB_HOST, PUBLIC_URL, OFFICE_PUBLIC_IPS
+    from config import WEB_PORT, WEB_HOST, PUBLIC_URL
+
+    global _bot
+    _bot = bot  # server handlerlari Telegram xabar yubora olishi uchun
 
     app = web.Application(client_max_size=10 * 1024 * 1024)  # 10MB limit
     app.router.add_get("/verify/{token}", _page_handler)
     app.router.add_post("/verify/{token}/upload", _upload_handler)
+    app.router.add_get("/setip/{token}", _setip_handler)
     # Sog'liq tekshiruvi (Render uchun)
     app.router.add_get("/health", lambda r: web.Response(text="OK"))
 
@@ -423,8 +537,9 @@ async def start_verify_server(port: int = None) -> web.AppRunner:
     await site.start()
 
     if PUBLIC_URL:
+        from database import get_office_ips
         logger.info("Web server tayyor: %s (Render rejimida)", PUBLIC_URL)
-        logger.info("Ofis IP filtri: %s", OFFICE_PUBLIC_IPS or "yo'q (hamma ruxsat)")
+        logger.info("Ofis IP filtri (bazadan): %s", get_office_ips() or "yo'q (hamma ruxsat)")
     else:
         local_ip = get_local_ip()
         logger.info("Web server tayyor: http://%s:%d (Local rejim)", local_ip, actual_port)

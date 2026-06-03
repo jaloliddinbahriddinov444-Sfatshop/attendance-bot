@@ -131,6 +131,13 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_finance_owner_date
             ON finance_entries(owner_id, entry_date);
+
+        CREATE TABLE IF NOT EXISTS office_ips (
+            ip TEXT PRIMARY KEY,
+            label TEXT DEFAULT '',
+            added_by INTEGER,
+            added_at TIMESTAMP DEFAULT (datetime('now'))
+        );
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -169,6 +176,19 @@ def init_db():
         if get_setting(key) is None:
             set_setting(key, value)
 
+    # Ofis IP'larini env'dan bazaga ko'chirish — FAQAT jadval bo'sh bo'lganda.
+    # Shundan keyin IP'lar bazada boshqariladi (admin tugmasi orqali yangilanadi),
+    # Render env'iga tegmasdan. Mavjud IP'lar yo'qolib qolmasligi uchun shu seed bor.
+    from config import OFFICE_PUBLIC_IPS
+    with get_db() as conn:
+        cnt = conn.execute("SELECT COUNT(*) FROM office_ips").fetchone()[0]
+        if cnt == 0 and OFFICE_PUBLIC_IPS:
+            for ip in OFFICE_PUBLIC_IPS:
+                conn.execute(
+                    "INSERT OR IGNORE INTO office_ips (ip, label) VALUES (?, ?)",
+                    (ip, "env'dan ko'chirildi"),
+                )
+
 
 # ===== Sozlamalar =====
 
@@ -196,6 +216,55 @@ def get_office_config():
         "work_start": get_setting("work_start", DEFAULT_WORK_START),
         "work_end": get_setting("work_end", DEFAULT_WORK_END),
     }
+
+
+# ===== Ofis IP'lari (dinamik whitelist) =====
+
+def get_office_ips() -> list:
+    """Ofis public IP'lari ro'yxati (faqat IP satrlari)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT ip FROM office_ips ORDER BY added_at"
+        ).fetchall()
+        return [r["ip"] for r in rows]
+
+
+def get_office_ips_detailed() -> list:
+    """Ofis IP'lari (ip, label, added_at bilan) — ro'yxat ko'rsatish uchun."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT ip, label, added_at FROM office_ips ORDER BY added_at"
+        ).fetchall()
+
+
+def add_office_ip(ip: str, label: str = "", added_by: int = None) -> bool:
+    """Ofis IP qo'shish. Yangi qo'shilsa True, allaqachon bor bo'lsa False."""
+    ip = (ip or "").strip()
+    if not ip:
+        return False
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO office_ips (ip, label, added_by) VALUES (?, ?, ?)",
+            (ip, label, added_by),
+        )
+        return cur.rowcount > 0
+
+
+def remove_office_ip(ip: str) -> int:
+    """Ofis IP o'chirish. O'chirilgan qatorlar soni qaytadi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM office_ips WHERE ip = ?", ((ip or "").strip(),)
+        )
+        return cur.rowcount
+
+
+def office_ip_exists(ip: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM office_ips WHERE ip = ?", ((ip or "").strip(),)
+        ).fetchone()
+        return row is not None
 
 
 # ===== Xodimlar =====
