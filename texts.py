@@ -240,6 +240,20 @@ BTN_ADMIN_TODAY = "📅 Bugungi hisobot"
 BTN_ADMIN_SETTINGS = "🏢 Ishxona sozlamalari"
 BTN_ADMIN_EXPORT = "📊 Excel hisobot"
 
+# ===== Bosh Admin: bo'limlarga guruhlash (faqat bosh_admin menyusi) =====
+# Asosiy admin paneldagi tugmalar bo'limlarga yig'ildi. Har bo'lim bosilganda
+# alohida submenyu ochiladi; "⬅️ Admin panel" submenyudan panelga qaytaradi.
+BTN_GRP_EMPLOYEES = "👥 Xodimlar"
+BTN_GRP_ATTENDANCE = "📅 Davomat"
+BTN_GRP_FINANCE = "💰 Moliya"
+BTN_GRP_CONTROL = "⚙️ Boshqaruv"
+BTN_ADMIN_BACK = "⬅️ Admin panel"
+
+GRP_EMPLOYEES_HEADER = "👥 <b>Xodimlar</b>\n\nKerakli amalni tanlang:"
+GRP_ATTENDANCE_HEADER = "📅 <b>Davomat</b>\n\nKerakli amalni tanlang:"
+GRP_FINANCE_HEADER = "💰 <b>Moliya</b>\n\nKerakli amalni tanlang:"
+GRP_CONTROL_HEADER = "⚙️ <b>Boshqaruv</b>\n\nKerakli amalni tanlang:"
+
 ADMIN_INVITE_LINK = (
     "➕ <b>Yangi xodim qo'shish</b>\n\n"
     "Xodimga quyidagi havolani yuboring:\n"

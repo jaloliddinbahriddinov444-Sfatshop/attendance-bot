@@ -81,6 +81,22 @@ def wifi_confirm_kb() -> ReplyKeyboardMarkup:
 
 
 def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
+    # Bosh Admin uchun — tugmalar bo'limlarga yig'ilgan (qisqa, tartibli panel).
+    # Har bo'lim alohida submenyu ochadi (grp_*_kb).
+    if is_bosh_admin:
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text=texts.BTN_GRP_EMPLOYEES),
+                 KeyboardButton(text=texts.BTN_GRP_ATTENDANCE)],
+                [KeyboardButton(text=texts.BTN_GRP_FINANCE),
+                 KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
+                [KeyboardButton(text=texts.BTN_GRP_CONTROL)],
+                [KeyboardButton(text=texts.BTN_BACK)],
+            ],
+            resize_keyboard=True,
+        )
+
+    # Oddiy admin uchun — eski tekis menyu (o'zgarmaydi).
     rows = [
         [KeyboardButton(text=texts.BTN_ADMIN_LIST),
          KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
@@ -91,14 +107,60 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
         [KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
         [KeyboardButton(text=texts.BTN_ADMIN_REMOVE),
          KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
+        [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
+        [KeyboardButton(text=texts.BTN_BACK)],
     ]
-    if is_bosh_admin:
-        rows.append([KeyboardButton(text=texts.BTN_BOSS_FINANCE),
-                     KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)])
-        rows.append([KeyboardButton(text=texts.BTN_OFFICE_IP)])
-    rows.append([KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)])
-    rows.append([KeyboardButton(text=texts.BTN_BACK)])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+# ===== Bosh Admin: bo'lim submenyulari =====
+
+def grp_employees_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_ADMIN_LIST)],
+            [KeyboardButton(text=texts.BTN_ADMIN_REMOVE)],
+            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def grp_attendance_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
+            [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT)],
+            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def grp_finance_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_ADMIN_RATES),
+             KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
+            [KeyboardButton(text=texts.BTN_BOSS_FINANCE),
+             KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
+            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def grp_control_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
+            [KeyboardButton(text=texts.BTN_OFFICE_IP)],
+            [KeyboardButton(text=texts.BTN_ADMIN_PROMOTE),
+             KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)],
+            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def ip_menu_kb() -> ReplyKeyboardMarkup:

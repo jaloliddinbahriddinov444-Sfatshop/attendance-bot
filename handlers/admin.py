@@ -58,6 +58,58 @@ async def admin_menu(message: Message, state: FSMContext):
     await message.answer(texts.ADMIN_MENU, reply_markup=_admin_kb(message))
 
 
+# ===== Bosh Admin: bo'lim submenyulari =====
+
+def _is_bosh_admin(message: Message) -> bool:
+    emp = get_employee_by_telegram_id(message.from_user.id)
+    if not emp:
+        return False
+    try:
+        return (emp["role"] or "") == "bosh_admin"
+    except (KeyError, IndexError):
+        return False
+
+
+@router.message(F.text == texts.BTN_GRP_EMPLOYEES)
+async def grp_employees(message: Message, state: FSMContext):
+    if not _is_bosh_admin(message):
+        return
+    await state.clear()
+    await message.answer(texts.GRP_EMPLOYEES_HEADER, reply_markup=kb.grp_employees_kb())
+
+
+@router.message(F.text == texts.BTN_GRP_ATTENDANCE)
+async def grp_attendance(message: Message, state: FSMContext):
+    if not _is_bosh_admin(message):
+        return
+    await state.clear()
+    await message.answer(texts.GRP_ATTENDANCE_HEADER, reply_markup=kb.grp_attendance_kb())
+
+
+@router.message(F.text == texts.BTN_GRP_FINANCE)
+async def grp_finance(message: Message, state: FSMContext):
+    if not _is_bosh_admin(message):
+        return
+    await state.clear()
+    await message.answer(texts.GRP_FINANCE_HEADER, reply_markup=kb.grp_finance_kb())
+
+
+@router.message(F.text == texts.BTN_GRP_CONTROL)
+async def grp_control(message: Message, state: FSMContext):
+    if not _is_bosh_admin(message):
+        return
+    await state.clear()
+    await message.answer(texts.GRP_CONTROL_HEADER, reply_markup=kb.grp_control_kb())
+
+
+@router.message(F.text == texts.BTN_ADMIN_BACK)
+async def grp_back_to_panel(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+    await state.clear()
+    await message.answer(texts.ADMIN_MENU, reply_markup=_admin_kb(message))
+
+
 # ===== Xodimlar ro'yxati =====
 
 @router.message(F.text == texts.BTN_ADMIN_LIST)
