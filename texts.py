@@ -86,6 +86,79 @@ REG_SUCCESS = (
 
 ADMIN_BADGE_NOTE = "🛡 <b>Siz administrator sifatida ro'yxatdan o'tdingiz</b>"
 
+# ===== Phase 4: bog'lash + plastik karta =====
+
+# --- Stranger /start: kontakt so'rash ---
+LINK_ASK_PHONE = (
+    "👋 Assalomu alaykum!\n\n"
+    "Botdan foydalanish uchun telefon raqamingizni yuboring — admin sizni "
+    "ro'yxatga qo'shgan bo'lsa, avtomatik aniqlanasiz.\n\n"
+    "Pastdagi <b>«Telefon raqamni yuborish»</b> tugmasini bosing."
+)
+
+LINK_NOT_FOUND = (
+    "🚫 <b>Ruxsat yo'q.</b>\n\n"
+    "Sizning raqamingiz ro'yxatda yo'q. Avval admin sizni qo'shishi kerak.\n\n"
+    "Adminga quyidagi Telegram ID raqamingizni ayting:\n"
+    "🆔 <code>{tg_id}</code>"
+)
+
+# --- Karta ma'lumotlari (ro'yxatdan o'tish oxirida) ---
+CARD_ASK_NUMBER = (
+    "💳 <b>Plastik karta ma'lumotlari</b>\n\n"
+    "Ish haqqi o'tkaziladigan karta raqamini yuboring (16 ta raqam).\n\n"
+    "<i>Misol: 0000 1212 2412 3040</i>"
+)
+
+CARD_INVALID_NUMBER = "❌ Karta raqami 16 ta raqamdan iborat bo'lishi kerak. Qayta kiriting."
+
+CARD_ASK_HOLDER = (
+    "👤 Kartada yozilgan ism-familiyani yozing:\n\n"
+    "<i>Misol: ALIYEV KAMRON</i>"
+)
+
+CARD_INVALID_HOLDER = "❌ Kartadagi ism-familiyani to'liq yozing."
+
+REG_SUCCESS_WITH_CARD = (
+    "✅ <b>Tabriklaymiz!</b>\n\n"
+    "Siz muvaffaqiyatli ro'yxatdan o'tdingiz.\n"
+    "Endi davomatni qayd qilishingiz mumkin.\n\n"
+    "💳 Karta: {card}\n"
+    "{admin_note}"
+)
+
+# --- Karta yangilash (Profil orqali) ---
+BTN_PROFILE_CARD = "💳 Karta ma'lumotlari"
+CARD_UPDATE_ASK_NUMBER = (
+    "💳 <b>Karta ma'lumotlarini yangilash</b>\n\n"
+    "Yangi karta raqamini yuboring (16 ta raqam).\n\n"
+    "<i>Misol: 0000 1212 2412 3040</i>"
+)
+CARD_UPDATE_SUCCESS = (
+    "✅ Karta ma'lumotlari saqlandi.\n\n"
+    "💳 {card}"
+)
+
+# --- Eski xodimlarga bir martalik eslatma ---
+BROADCAST_CARD_NUDGE = (
+    "💳 <b>Hurmatli xodim, iltimos karta ma'lumotlaringizni qo'shing.</b>\n\n"
+    "👤 Profilim → 💳 Karta ma'lumotlari → raqamni kiriting.\n\n"
+    "<i>Eslatma:</i> ayni vaqtda o'zingiz ishlatib turgan, faol kartani kiriting — "
+    "ish haqqi aynan shu kartaga o'tkaziladi.\n\n"
+    "Format: <code>0000 1212 2412 3040 (ALIYEV KAMRON)</code>"
+)
+
+
+def format_card(number: str, holder: str = "") -> str:
+    """Karta raqamini 4 talab ko'rsatish + qavsda egasi ismi.
+    Masalan: '0000 1212 2412 3040 (ALIYEV KAMRON)'."""
+    digits = "".join(ch for ch in (number or "") if ch.isdigit())
+    if not digits:
+        return PROFILE_CARD_NONE
+    grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+    holder = (holder or "").strip()
+    return f"{grouped} ({holder})" if holder else grouped
+
 # ===== Asosiy menyu =====
 MAIN_MENU = "🏠 <b>Asosiy menyu</b>\n\nKerakli bo'limni tanlang:"
 
@@ -211,9 +284,12 @@ PROFILE_INFO = (
     "📝 F.I.Sh: {name}\n"
     "📱 Telefon: <code>{phone}</code>\n"
     "💼 Lavozim: {position}\n"
+    "💳 Karta: {card}\n"
     "📅 Ro'yxatdan o'tgan: {registered}\n"
     "{admin_badge}"
 )
+
+PROFILE_CARD_NONE = "<i>belgilanmagan</i>"
 
 ADMIN_BADGE = "🛡 <b>Status:</b> Administrator"
 
@@ -253,6 +329,55 @@ GRP_EMPLOYEES_HEADER = "👥 <b>Xodimlar</b>\n\nKerakli amalni tanlang:"
 GRP_ATTENDANCE_HEADER = "📅 <b>Davomat</b>\n\nKerakli amalni tanlang:"
 GRP_FINANCE_HEADER = "💰 <b>Moliya</b>\n\nKerakli amalni tanlang:"
 GRP_CONTROL_HEADER = "⚙️ <b>Boshqaruv</b>\n\nKerakli amalni tanlang:"
+
+# ===== Phase 4: Admin xodim qo'shish =====
+BTN_ADMIN_ADD_EMPLOYEE = "➕ Xodim qo'shish"
+
+ADD_EMP_ASK_NAME = (
+    "➕ <b>Yangi xodim qo'shish</b>\n\n"
+    "Xodimning to'liq F.I.Sh ini yozing:\n\n"
+    "<i>Misol: Aliyev Vali Salimovich</i>"
+)
+ADD_EMP_NAME_TOO_SHORT = "❌ Ism juda qisqa. To'liq F.I.Sh yozing (kamida 5 ta harf)."
+ADD_EMP_ASK_PHONE = (
+    "📱 Xodimning telefon raqamini yozing:\n\n"
+    "<i>Misol: +998 90 123 45 67</i>"
+)
+ADD_EMP_PHONE_INVALID = "❌ Telefon raqami noto'g'ri. Kamida 9 ta raqam bo'lishi kerak."
+ADD_EMP_ASK_POSITION = (
+    "💼 Xodimning lavozimini yozing:\n\n"
+    "<i>Misol: Sotuvchi, Menejer, Buxgalter</i>"
+)
+ADD_EMP_POSITION_TOO_SHORT = "❌ Lavozim nomi juda qisqa."
+ADD_EMP_CONFIRM = (
+    "❓ <b>Tasdiqlang</b>\n\n"
+    "👤 F.I.Sh: {name}\n"
+    "📱 Telefon: <code>{phone}</code>\n"
+    "💼 Lavozim: {position}\n\n"
+    "Qo'shilsinmi?"
+)
+ADD_EMP_ALREADY_ACTIVE = (
+    "⚠️ Bu telefon allaqachon faol xodim <b>{name}</b> ga tegishli.\n"
+    "Qo'shilmadi."
+)
+ADD_EMP_ADDED = (
+    "✅ Xodim qo'shildi: <b>{name}</b> (<code>{phone}</code>).\n\n"
+    "U botga <b>/start</b> bersa, telefoni orqali aniqlanib selfi va karta "
+    "ma'lumotlari so'raladi."
+)
+ADD_EMP_UPDATED = (
+    "✅ Mavjud (hali bog'lanmagan) yozuv yangilandi: <b>{name}</b> "
+    "(<code>{phone}</code>).\n\n"
+    "U botga <b>/start</b> berishi kutilmoqda."
+)
+ADD_EMP_REACTIVATED = (
+    "✅ Eski xodim qayta jonlantirildi: <b>{name}</b> (<code>{phone}</code>).\n"
+    "Davomat tarixi saqlandi."
+)
+ADD_EMP_LIMIT = (
+    "❌ Xodimlar soni maksimal chegaraga yetdi ({max}). "
+    "Yangi xodim qo'shib bo'lmaydi."
+)
 
 ADMIN_INVITE_LINK = (
     "➕ <b>Yangi xodim qo'shish</b>\n\n"

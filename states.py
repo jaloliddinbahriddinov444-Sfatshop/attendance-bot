@@ -7,6 +7,25 @@ class Registration(StatesGroup):
     waiting_phone = State()
     waiting_position = State()
     waiting_face_photo = State()
+    # Phase 4 — admin oldindan qo'shgan xodimni bog'lash (stranger kontakt kutish)
+    linking_phone = State()
+    # Phase 4 — ro'yxatdan o'tish oxirida karta ma'lumotlari
+    waiting_card_number = State()
+    waiting_card_holder_name = State()
+
+
+class AdminAddEmployee(StatesGroup):
+    """Admin/Bosh Admin tomonidan xodimni oldindan qo'shish (Phase 4)."""
+    waiting_name = State()
+    waiting_phone = State()
+    waiting_position = State()
+    waiting_confirm = State()
+
+
+class CardUpdate(StatesGroup):
+    """Profil orqali karta ma'lumotlarini yangilash (Phase 4)."""
+    waiting_number = State()
+    waiting_holder_name = State()
 
 
 class Attendance(StatesGroup):

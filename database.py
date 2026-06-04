@@ -1,4 +1,5 @@
 """SQLite ma'lumotlar bazasi - barcha funksiyalar"""
+import re
 import sqlite3
 from contextlib import contextmanager
 from typing import Optional
@@ -163,6 +164,16 @@ def init_db():
                     (INITIAL_ADMIN_ID,)
                 )
 
+        # Migratsiya (Phase 4): plastik karta ustunlari
+        if "card_number" not in columns:
+            conn.execute(
+                "ALTER TABLE employees ADD COLUMN card_number TEXT DEFAULT ''"
+            )
+        if "card_holder_name" not in columns:
+            conn.execute(
+                "ALTER TABLE employees ADD COLUMN card_holder_name TEXT DEFAULT ''"
+            )
+
     # Boshlang'ich sozlamalar
     defaults = {
         "office_lat": str(DEFAULT_OFFICE_LAT),
@@ -301,6 +312,122 @@ def create_employee(telegram_id: int, full_name: str, phone: str,
             (telegram_id, full_name, phone, position, face_encoding, is_admin, role)
         )
         return cursor.lastrowid
+
+
+# ===== Phase 4: Admin-led ro'yxat + plastik karta =====
+
+def phone_key(s: str) -> str:
+    """Telefonni solishtirish uchun kalit: faqat raqamlar, oxirgi 9 ta
+    (O'zbek mobil raqami). Turli format (+998..., 998..., 90...) bir xil bo'ladi."""
+    return re.sub(r"\D", "", s or "")[-9:]
+
+
+def create_pending_employee(full_name: str, phone: str, position: str) -> int:
+    """Admin oldindan qo'shadigan 'pending' xodim. Telegram ID hali yo'q —
+    kanonik holat: telegram_id = -id (manfiy, har doim noyob). Xodim /start
+    berib telefoni orqali aniqlangach, telegram_id haqiqiy qiymatga o'tadi."""
+    import random
+    with get_db() as conn:
+        last_err = None
+        for _ in range(8):
+            placeholder = -random.randint(10 ** 8, 10 ** 9 - 1)
+            try:
+                cur = conn.execute(
+                    "INSERT INTO employees (telegram_id, full_name, phone, "
+                    "position, face_encoding) VALUES (?, ?, ?, ?, ?)",
+                    (placeholder, full_name, phone, position, b"")
+                )
+                new_id = cur.lastrowid
+                # Kanonik: telegram_id = -id (noyob va aniqlanadigan)
+                conn.execute(
+                    "UPDATE employees SET telegram_id = ? WHERE id = ?",
+                    (-new_id, new_id)
+                )
+                return new_id
+            except sqlite3.IntegrityError as e:
+                last_err = e
+                continue
+        raise RuntimeError(f"placeholder allocation failed: {last_err}")
+
+
+def find_employee_by_phone(phone: str, only_pending: bool = False,
+                           include_inactive: bool = True):
+    """Telefon (oxirgi 9 raqam) bo'yicha xodimni topish.
+    only_pending=True  -> faqat hali bog'lanmagan (telegram_id < 0).
+    include_inactive=False -> faqat is_active=1.
+    """
+    key = phone_key(phone)
+    if not key:
+        return None
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM employees").fetchall()
+    for r in rows:
+        if phone_key(r["phone"]) != key:
+            continue
+        if only_pending and r["telegram_id"] >= 0:
+            continue
+        if not include_inactive and not r["is_active"]:
+            continue
+        return r
+    return None
+
+
+def link_pending_to_telegram(employee_id: int, telegram_id: int,
+                             face_encoding: bytes):
+    """Pending yozuvni haqiqiy Telegram ID va yuz kodi bilan bog'lash."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE employees SET telegram_id = ?, face_encoding = ?, "
+            "is_active = 1 WHERE id = ?",
+            (telegram_id, face_encoding, employee_id)
+        )
+
+
+def update_employee_card(employee_id: int, card_number: str,
+                         card_holder_name: str):
+    """Karta raqami (16 raqam, probelsiz) va egasi ismini saqlash."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE employees SET card_number = ?, card_holder_name = ? "
+            "WHERE id = ?",
+            (card_number, card_holder_name, employee_id)
+        )
+
+
+def update_employee_profile(employee_id: int, full_name: str = None,
+                            position: str = None):
+    """Admin xodimni qayta qo'shganda ism/lavozimni yangilash."""
+    sets, params = [], []
+    if full_name is not None:
+        sets.append("full_name = ?")
+        params.append(full_name)
+    if position is not None:
+        sets.append("position = ?")
+        params.append(position)
+    if not sets:
+        return
+    params.append(employee_id)
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE employees SET {', '.join(sets)} WHERE id = ?", params
+        )
+
+
+def get_employees_without_card():
+    """Broadcast uchun: faol, bog'langan (telegram_id>0), kartasi yo'q xodimlar."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE is_active = 1 AND telegram_id > 0 "
+            "AND (card_number IS NULL OR card_number = '')"
+        ).fetchall()
+
+
+def is_card_announce_done() -> bool:
+    return get_setting("card_announce_done") == "1"
+
+
+def mark_card_announce_done():
+    set_setting("card_announce_done", "1")
 
 
 def get_all_employees(active_only=True):

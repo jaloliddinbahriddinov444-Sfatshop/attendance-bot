@@ -98,6 +98,7 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
 
     # Oddiy admin uchun — eski tekis menyu (o'zgarmaydi).
     rows = [
+        [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE)],
         [KeyboardButton(text=texts.BTN_ADMIN_LIST),
          KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
         [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
@@ -118,6 +119,7 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
 def grp_employees_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE)],
             [KeyboardButton(text=texts.BTN_ADMIN_LIST)],
             [KeyboardButton(text=texts.BTN_ADMIN_REMOVE)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
@@ -397,3 +399,21 @@ def finance_note_skip_kb() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True
     )
+
+
+# ===== Phase 4: karta / xodim qo'shish =====
+
+def profile_card_inline_kb() -> InlineKeyboardMarkup:
+    """Profil xabari ostidagi 'Karta ma'lumotlari' tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BTN_PROFILE_CARD,
+                              callback_data="profile_card")]
+    ])
+
+
+def addemp_confirm_kb() -> InlineKeyboardMarkup:
+    """Admin xodim qo'shishni tasdiqlash."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="addemp:yes"),
+         InlineKeyboardButton(text="❌ Bekor", callback_data="addemp:no")]
+    ])

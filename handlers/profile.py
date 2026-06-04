@@ -1,18 +1,28 @@
 """Profil va statistika ko'rsatish"""
+import re
+import logging
 from datetime import datetime, timedelta
 from tzutil import now as tz_now, to_local
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, CallbackQuery
 
 import texts
 import keyboards as kb
+from states import CardUpdate
 from database import (
     get_employee_by_telegram_id, get_monthly_attendance, get_office_config,
     get_monthly_worked_minutes, get_salary_totals_by_type,
-    get_active_salary_entries
+    get_active_salary_entries, update_employee_card,
 )
 
+logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _menu_for(employee):
+    return kb.main_menu_kb(is_admin=bool(employee["is_admin"]),
+                           is_boss=(employee["role"] == "boss"))
 
 
 @router.message(F.text == texts.BTN_PROFILE)
@@ -24,17 +34,88 @@ async def show_profile(message: Message):
 
     registered = to_local(employee["registered_at"]).strftime("%d.%m.%Y")
     admin_badge = texts.ADMIN_BADGE if employee["is_admin"] else ""
+    card = texts.format_card(
+        employee["card_number"] if "card_number" in employee.keys() else "",
+        employee["card_holder_name"] if "card_holder_name" in employee.keys() else "",
+    )
 
     await message.answer(
         texts.PROFILE_INFO.format(
             name=employee["full_name"],
             phone=employee["phone"],
             position=employee["position"],
+            card=card,
             registered=registered,
             admin_badge=admin_badge,
         ),
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+        reply_markup=kb.profile_card_inline_kb()
     )
+
+
+# ===== Phase 4: karta ma'lumotlarini yangilash =====
+
+@router.callback_query(F.data == "profile_card")
+async def card_update_start(call: CallbackQuery, state: FSMContext):
+    emp = get_employee_by_telegram_id(call.from_user.id)
+    if not emp:
+        await call.answer(texts.NOT_REGISTERED, show_alert=True)
+        return
+    await state.update_data(card_emp_id=emp["id"])
+    await call.message.answer(texts.CARD_UPDATE_ASK_NUMBER, reply_markup=kb.cancel_kb())
+    await state.set_state(CardUpdate.waiting_number)
+    await call.answer()
+
+
+@router.message(CardUpdate.waiting_number, F.text == texts.BTN_CANCEL)
+@router.message(CardUpdate.waiting_holder_name, F.text == texts.BTN_CANCEL)
+async def card_update_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    emp = get_employee_by_telegram_id(message.from_user.id)
+    await message.answer(
+        texts.CANCELLED,
+        reply_markup=_menu_for(emp) if emp else kb.remove_kb()
+    )
+
+
+@router.message(CardUpdate.waiting_number, F.text)
+async def card_update_number(message: Message, state: FSMContext):
+    digits = re.sub(r"\D", "", message.text)
+    if len(digits) != 16:
+        await message.answer(texts.CARD_INVALID_NUMBER)
+        return
+    await state.update_data(card_number=digits)
+    await message.answer(texts.CARD_ASK_HOLDER)
+    await state.set_state(CardUpdate.waiting_holder_name)
+
+
+@router.message(CardUpdate.waiting_number)
+async def card_update_number_invalid(message: Message):
+    await message.answer(texts.CARD_INVALID_NUMBER)
+
+
+@router.message(CardUpdate.waiting_holder_name, F.text)
+async def card_update_holder(message: Message, state: FSMContext):
+    name = message.text.strip()
+    if len(name) < 3:
+        await message.answer(texts.CARD_INVALID_HOLDER)
+        return
+    data = await state.get_data()
+    emp_id = data.get("card_emp_id")
+    update_employee_card(emp_id, data["card_number"], name)
+    await state.clear()
+
+    emp = get_employee_by_telegram_id(message.from_user.id)
+    formatted = texts.format_card(data["card_number"], name)
+    await message.answer(
+        texts.CARD_UPDATE_SUCCESS.format(card=formatted),
+        reply_markup=_menu_for(emp) if emp else kb.remove_kb()
+    )
+    logger.info("Card updated via profile for employee id=%s", emp_id)
+
+
+@router.message(CardUpdate.waiting_holder_name)
+async def card_update_holder_invalid(message: Message):
+    await message.answer(texts.CARD_INVALID_HOLDER)
 
 
 @router.message(F.text == texts.BTN_STATS)

@@ -7,7 +7,7 @@ from aiogram.types import Message
 import texts
 import keyboards as kb
 from database import get_employee_by_telegram_id, get_active_employees_count
-from config import MAX_EMPLOYEES
+from config import MAX_EMPLOYEES, INITIAL_ADMIN_ID
 
 router = Router()
 
@@ -24,17 +24,20 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
-    # Yangi foydalanuvchi
-    if get_active_employees_count() >= MAX_EMPLOYEES:
-        await message.answer(texts.MAX_EMPLOYEES_REACHED.format(max=MAX_EMPLOYEES))
+    from states import Registration
+
+    # Oqim A — INITIAL_ADMIN bo'sh bazada o'zini bootstrap qiladi (yagona
+    # o'zi-ro'yxatdan o'tish istisnosi). Qolganlar admin tomonidan qo'shiladi.
+    if message.from_user.id == INITIAL_ADMIN_ID and get_active_employees_count() == 0:
+        await message.answer(texts.WELCOME_NEW, reply_markup=kb.remove_kb())
+        await message.answer(texts.REG_START, reply_markup=kb.cancel_kb())
+        await state.set_state(Registration.waiting_full_name)
         return
 
-    # Ro'yxatdan o'tishni boshlash uchun signal beramiz
-    # (registration.py routerda davomi)
-    from states import Registration
-    await message.answer(texts.WELCOME_NEW, reply_markup=kb.remove_kb())
-    await message.answer(texts.REG_START, reply_markup=kb.cancel_kb())
-    await state.set_state(Registration.waiting_full_name)
+    # Oqim B — begona /start: telefon orqali bog'lashga urinish.
+    # Admin oldindan qo'shgan bo'lsa, kontakt mos kelib selfi+karta so'raladi.
+    await message.answer(texts.LINK_ASK_PHONE, reply_markup=kb.phone_request_kb())
+    await state.set_state(Registration.linking_phone)
 
 
 @router.message(Command("cancel"))

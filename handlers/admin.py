@@ -10,7 +10,7 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeybo
 
 import texts
 import keyboards as kb
-from states import AdminPanel, AdminSalary, TaskCreate
+from states import AdminPanel, AdminSalary, TaskCreate, AdminAddEmployee
 from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
     deactivate_employee, set_admin_status, get_active_employees_count,
@@ -22,6 +22,8 @@ from database import (
     get_audit_entries, get_all_employees_salary_summary,
     get_monthly_worked_minutes, get_salary_totals_by_type,
     create_task, set_role, get_boss,
+    find_employee_by_phone, create_pending_employee,
+    update_employee_profile, reactivate_employee, phone_key,
 )
 from config import MAX_EMPLOYEES
 
@@ -108,6 +110,125 @@ async def grp_back_to_panel(message: Message, state: FSMContext):
         return
     await state.clear()
     await message.answer(texts.ADMIN_MENU, reply_markup=_admin_kb(message))
+
+
+# ===== Phase 4: Admin xodim qo'shish (oldindan) =====
+
+@router.message(F.text == texts.BTN_ADMIN_ADD_EMPLOYEE)
+async def add_emp_start(message: Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+    await state.clear()
+    await message.answer(texts.ADD_EMP_ASK_NAME, reply_markup=kb.cancel_kb())
+    await state.set_state(AdminAddEmployee.waiting_name)
+
+
+@router.message(AdminAddEmployee.waiting_name, F.text == texts.BTN_CANCEL)
+@router.message(AdminAddEmployee.waiting_phone, F.text == texts.BTN_CANCEL)
+@router.message(AdminAddEmployee.waiting_position, F.text == texts.BTN_CANCEL)
+async def add_emp_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(texts.CANCELLED, reply_markup=_admin_kb(message))
+
+
+@router.message(AdminAddEmployee.waiting_name, F.text)
+async def add_emp_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+    if len(name) < 5:
+        await message.answer(texts.ADD_EMP_NAME_TOO_SHORT)
+        return
+    await state.update_data(ae_name=name)
+    await message.answer(texts.ADD_EMP_ASK_PHONE, reply_markup=kb.cancel_kb())
+    await state.set_state(AdminAddEmployee.waiting_phone)
+
+
+@router.message(AdminAddEmployee.waiting_phone, F.text)
+async def add_emp_phone(message: Message, state: FSMContext):
+    phone = message.text.strip()
+    if len(phone_key(phone)) < 9:
+        await message.answer(texts.ADD_EMP_PHONE_INVALID)
+        return
+    await state.update_data(ae_phone=phone)
+    await message.answer(texts.ADD_EMP_ASK_POSITION, reply_markup=kb.cancel_kb())
+    await state.set_state(AdminAddEmployee.waiting_position)
+
+
+@router.message(AdminAddEmployee.waiting_position, F.text)
+async def add_emp_position(message: Message, state: FSMContext):
+    position = message.text.strip()
+    if len(position) < 2:
+        await message.answer(texts.ADD_EMP_POSITION_TOO_SHORT)
+        return
+    data = await state.update_data(ae_position=position)
+    await message.answer(
+        texts.ADD_EMP_CONFIRM.format(
+            name=data["ae_name"], phone=data["ae_phone"], position=position
+        ),
+        reply_markup=kb.addemp_confirm_kb()
+    )
+    await state.set_state(AdminAddEmployee.waiting_confirm)
+
+
+@router.callback_query(F.data.startswith("addemp:"))
+async def add_emp_confirm(call: CallbackQuery, state: FSMContext):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    answer = call.data.split(":")[1]
+    if answer == "no":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    name = data.get("ae_name")
+    phone = data.get("ae_phone")
+    position = data.get("ae_position")
+    await state.clear()
+
+    if not (name and phone and position):
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    existing = find_employee_by_phone(phone, include_inactive=True)
+
+    if existing and existing["telegram_id"] > 0 and existing["is_active"]:
+        # Faol va bog'langan — qo'shib bo'lmaydi
+        await call.message.edit_text(
+            texts.ADD_EMP_ALREADY_ACTIVE.format(name=existing["full_name"])
+        )
+        await call.answer()
+        return
+
+    if existing:
+        # Pending (telegram_id<0) yoki deaktiv yozuv — jonlantirib yangilaymiz
+        if not existing["is_active"]:
+            reactivate_employee(existing["id"])
+        update_employee_profile(existing["id"], full_name=name, position=position)
+        if existing["telegram_id"] < 0:
+            msg = texts.ADD_EMP_UPDATED.format(name=name, phone=phone)
+        else:
+            msg = texts.ADD_EMP_REACTIVATED.format(name=name, phone=phone)
+        await call.message.edit_text(msg)
+        await call.answer("✅")
+        logger.info("Add-emp: existing id=%s updated by tg=%s",
+                    existing["id"], call.from_user.id)
+        return
+
+    # Yangi pending yozuv — limit tekshiruvi
+    if get_active_employees_count() >= MAX_EMPLOYEES:
+        await call.message.edit_text(texts.ADD_EMP_LIMIT.format(max=MAX_EMPLOYEES))
+        await call.answer()
+        return
+
+    new_id = create_pending_employee(name, phone, position)
+    await call.message.edit_text(texts.ADD_EMP_ADDED.format(name=name, phone=phone))
+    await call.answer("✅")
+    logger.info("Add-emp: pending created id=%s by tg=%s", new_id, call.from_user.id)
 
 
 # ===== Xodimlar ro'yxati =====
