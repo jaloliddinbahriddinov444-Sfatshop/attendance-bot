@@ -13,7 +13,7 @@ from database import (
     add_office_ip,
     remove_office_ip,
 )
-from services.wifi_verify import create_setip_token
+from services.wifi_verify import create_setip_token, to_office_network
 
 router = Router()
 
@@ -96,10 +96,11 @@ async def cb_ip_add(call: CallbackQuery):
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
     ip = call.data.split(":", 1)[1]
-    add_office_ip(ip, label="ogohlantirishdan", added_by=call.from_user.id)
+    net = to_office_network(ip)
+    add_office_ip(net, label="ogohlantirishdan (/24)", added_by=call.from_user.id)
     await call.answer("✅ Qo'shildi")
     try:
-        await call.message.edit_text(texts.SETIP_ADDED.format(ip=ip))
+        await call.message.edit_text(texts.SETIP_ADDED.format(ip=net))
     except Exception:
         pass
 

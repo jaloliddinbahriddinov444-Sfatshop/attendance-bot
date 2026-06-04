@@ -6,6 +6,7 @@ Sahifa faqat ofis Wi-Fi'ida ochiladi (lokal server).
 import asyncio
 import hashlib
 import io
+import ipaddress
 import socket
 import time
 import uuid
@@ -342,18 +343,56 @@ def _get_client_ip(request: web.Request) -> str:
     return request.remote or "unknown"
 
 
-def _is_office_ip(client_ip: str) -> bool:
-    """Mijoz IP'si ofis IP'lariga mosligini tekshirish (baza orqali — dinamik).
+def to_office_network(ip: str) -> str:
+    """IP'ni ofis tarmog'iga (CIDR) aylantirish — pul aylanишini qoplash uchun.
 
-    IP'lar endi `office_ips` jadvalida saqlanadi va admin tomonidan runtime'da
-    yangilanadi (Render env'iga tegmasdan). Ro'yxat bo'sh bo'lsa — local rejim,
-    hamma ruxsat etiladi.
+    IPv4 → /24 (masalan 84.54.84.210 → 84.54.84.0/24).
+    IPv6 → /64. Noto'g'ri format → o'zini qaytaradi (aniq IP sifatida saqlanadi).
+    """
+    ip = (ip or "").strip()
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    prefix = 24 if addr.version == 4 else 64
+    return str(ipaddress.ip_network(f"{ip}/{prefix}", strict=False))
+
+
+def _is_office_ip(client_ip: str) -> bool:
+    """Mijoz IP'si ofis IP'lariga/diapazonlariga mosligini tekshirish (baza orqali).
+
+    `office_ips` jadvalidagi har yozuv aniq IP (`84.54.84.210`) yoki diapazon
+    (`84.54.84.0/24`) bo'lishi mumkin. Diapazon — provayder dinamik IP pulини
+    qoplaydi: bir blokdagi barcha IP'lar bitta qoidaga sig'adi. Ro'yxat bo'sh
+    bo'lsa — local rejim, hamma ruxsat etiladi.
     """
     from database import get_office_ips
     ips = get_office_ips()
     if not ips:
         return True
-    return client_ip in ips
+
+    client_ip = (client_ip or "").strip()
+    try:
+        client = ipaddress.ip_address(client_ip)
+    except ValueError:
+        # Noto'g'ri format — eski xatti-harakat (aniq matn tengligi)
+        return client_ip in ips
+
+    for entry in ips:
+        entry = (entry or "").strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                if client in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif client == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            # Yozuv noto'g'ri formatda — aniq matn tengligiga tushib qolamiz
+            if client_ip == entry:
+                return True
+    return False
 
 
 # ===== Web handlerlar =====
@@ -481,26 +520,27 @@ async def _setip_handler(request: web.Request) -> web.Response:
 
     _setip_pending.pop(token, None)  # bir martalik
     client_ip = _get_client_ip(request)
+    net = to_office_network(client_ip)  # /24 diapazon sifatida saqlaymiz
 
     from database import add_office_ip, office_ip_exists
-    already = office_ip_exists(client_ip)
-    add_office_ip(client_ip, label="admin orqali", added_by=entry["admin_id"])
-    logger.info("Ofis IP belgilandi: %s (admin=%s, already=%s)",
-                client_ip, entry["admin_id"], already)
+    already = office_ip_exists(net)
+    add_office_ip(net, label="admin orqali (/24)", added_by=entry["admin_id"])
+    logger.info("Ofis tarmog'i belgilandi: %s (ip=%s, admin=%s, already=%s)",
+                net, client_ip, entry["admin_id"], already)
 
     # Adminni Telegram orqali xabardor qilish (+ tezkor o'chirish tugmasi)
     if _bot is not None:
         try:
-            txt = (texts.SETIP_ALREADY if already else texts.SETIP_ADDED).format(ip=client_ip)
+            txt = (texts.SETIP_ALREADY if already else texts.SETIP_ADDED).format(ip=net)
             del_kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="🗑 Bu IP'ni o'chirish",
-                                     callback_data=f"ipdel:{client_ip}")
+                                     callback_data=f"ipdel:{net}")
             ]])
             await _bot.send_message(entry["admin_id"], txt, reply_markup=del_kb)
         except Exception:
             logger.exception("setip xabar yuborishda xato")
 
-    return web.Response(text=SETIP_OK_HTML.replace("{ip}", client_ip),
+    return web.Response(text=SETIP_OK_HTML.replace("{ip}", net),
                         content_type="text/html")
 
 
