@@ -234,34 +234,6 @@ async def add_emp_confirm(call: CallbackQuery, state: FSMContext):
 
 # ===== Xodimlar ro'yxati =====
 
-@router.message(F.text == texts.BTN_ADMIN_LIST)
-async def admin_list(message: Message, bot: Bot):
-    if not _is_admin(message):
-        return
-    employees = get_all_employees(active_only=True)
-    count = len(employees)
-
-    me = await bot.get_me()
-    text = texts.ADMIN_INVITE_LINK.format(
-        bot_username=me.username, count=count, max=MAX_EMPLOYEES
-    )
-    text += "\n\n" + texts.EMPLOYEES_LIST_HEADER.format(count=count, max=MAX_EMPLOYEES)
-
-    if not employees:
-        text += "<i>Xodimlar yo'q</i>"
-    else:
-        for idx, emp in enumerate(employees, 1):
-            text += texts.EMPLOYEE_ITEM.format(
-                idx=idx,
-                admin_icon="👑" if emp["is_admin"] else "👤",
-                name=emp["full_name"],
-                position=emp["position"],
-                phone=emp["phone"]
-            )
-
-    await message.answer(text)
-
-
 # ===== Xodim o'chirish =====
 
 @router.message(F.text == texts.BTN_ADMIN_REMOVE)
