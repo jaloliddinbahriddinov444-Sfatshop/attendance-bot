@@ -140,6 +140,15 @@ def _format_employee_detail(emp) -> str:
         body = texts.EMP_DETAIL_TODAY_NONE
     out += texts.EMP_DETAIL_TODAY.format(today=body)
 
+    # Plastik karta (faqat boss/bosh_admin ko'radi)
+    try:
+        card_num = emp["card_number"] if "card_number" in emp.keys() else ""
+        card_holder = emp["card_holder_name"] if "card_holder_name" in emp.keys() else ""
+    except Exception:
+        card_num, card_holder = "", ""
+    card_str = texts.format_card(card_num, card_holder)
+    out += texts.EMP_DETAIL_CARD.format(card=card_str)
+
     # Bu oyda ishlangan
     now = tz_now()
     minutes = get_monthly_worked_minutes(emp["id"], now.year, now.month)

@@ -771,6 +771,7 @@ EMP_DETAIL_TASKS_HEADER = "\n\n📝 <b>Tugatilmagan vazifalar:</b>"
 EMP_DETAIL_TASK_LINE = "\n  • <b>{title}</b> (tayinlagan: {by}, yaratilgan: {created}){skips}"
 EMP_DETAIL_TASK_SKIPS = " — <i>{count} marta o'tkazilgan</i>"
 EMP_DETAIL_TASKS_NONE = "\n— yo'q —"
+EMP_DETAIL_CARD = "\n\n💳 <b>Plastik karta:</b> {card}"
 
 # Bosh Admin: Boss tayinlash
 ADMIN_BOSS_PICK = (
