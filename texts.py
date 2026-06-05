@@ -309,7 +309,7 @@ ADMIN_MENU = "⚙️ <b>Admin panel</b>\n\nKerakli amalni tanlang:"
 
 NO_PERMISSION = "🚫 Sizda admin huquqlari yo'q."
 
-BTN_ADMIN_LIST = "📋 Xodimlar ro'yxati"
+BTN_ADMIN_LIST = "👥 Xodimlar ma'lumotlari"
 BTN_ADMIN_REMOVE = "❌ Xodim o'chirish"
 BTN_ADMIN_PROMOTE = "👑 Admin tayinlash"
 BTN_ADMIN_TODAY = "📅 Bugungi hisobot"
@@ -971,3 +971,33 @@ SALARY_HEADER_DAILY = (
     "━━━━━━━━━━━━━━━━━\n"
     "💰 <b>Jami: {total:,} so'm</b>"
 )
+
+# ===== Admin: Xodimlar ma'lumotlari (lavozim bo'yicha) =====
+EMP_DATA_PICK_POS = (
+    "👥 <b>Xodimlar ma'lumotlari</b>\n\n"
+    "Avval lavozimni tanlang:"
+)
+EMP_DATA_NO_POSITION = "📋 Lavozim belgilanmagan ({count} ta xodim)"
+EMP_DATA_PICK_EMP = "👥 <b>{pos_name}</b>\n\nXodimni tanlang ({count} ta):"
+EMP_DATA_NO_EMPS = "Bu lavozimda xodim yo'q."
+
+EMP_FULL_PROFILE = (
+    "👤 <b>{name}</b>\n"
+    "💼 Lavozim: <i>{position}</i>{role_badge}\n"
+    "📱 Telefon: <code>{phone}</code>\n"
+    "💳 Karta: {card}\n"
+    "📅 Ro'yxatdan: {registered}\n"
+)
+EMP_FULL_POSITION_RATE = "💵 Kunlik stavka: <b>{rate:,} so'm</b> ({hours} soat/kun)\n"
+EMP_FULL_MONTH_HEADER = "\n📅 <b>{month} {year} — davomat:</b>\n"
+EMP_FULL_DAY_LINE = "  {date} ({weekday}): 🟢{inn} → 🔴{out} ({worked})\n"
+EMP_FULL_DAY_NO_OUT = "  {date} ({weekday}): 🟢{inn} → —\n"
+EMP_FULL_DAY_ABSENT = "  {date} ({weekday}): ❌ kelmagan\n"
+EMP_FULL_MONTH_TOTAL = "⏱ Jami: <b>{hours} soat {mins} daqiqa</b>\n"
+EMP_FULL_SALARY_HEADER = "\n💰 <b>Ish haqqi ({month} {year}):</b>\n"
+EMP_FULL_SALARY_BASE = "  Asosiy: <b>+{base:,} so'm</b>\n"
+EMP_FULL_SALARY_LINE = "  {emoji} {type}: {sign}<b>{amount:,}</b> — <i>{reason}</i>\n"
+EMP_FULL_SALARY_TOTAL = "  <b>Jami: {total:,} so'm</b>\n"
+EMP_FULL_TASKS_HEADER = "\n📝 <b>Tugatilmagan vazifalar:</b>\n"
+EMP_FULL_TASK_LINE = "  • <b>{title}</b> ({by}){skips}\n"
+EMP_FULL_NO_DATA = "<i>Ma'lumot yo'q</i>"

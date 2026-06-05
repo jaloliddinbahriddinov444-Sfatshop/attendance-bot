@@ -492,3 +492,38 @@ def position_actions_kb(pos_id: int) -> InlineKeyboardMarkup:
                               callback_data=f"pos_del:{pos_id}")],
         [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="pos_del:cancel")],
     ])
+
+
+# ===== Admin: Xodimlar ma'lumotlari (lavozim → xodim) =====
+
+def emp_positions_kb(positions, unassigned_count: int = 0) -> InlineKeyboardMarkup:
+    """Lavozimlar ro'yxati + 'Lavozim belgilanmagan' variant."""
+    rows = []
+    for pos in positions:
+        rows.append([InlineKeyboardButton(
+            text=f"💼 {pos['name']}",
+            callback_data=f"empdata_pos:{pos['id']}"
+        )])
+    if unassigned_count > 0:
+        rows.append([InlineKeyboardButton(
+            text=f"❓ Lavozim belgilanmagan ({unassigned_count})",
+            callback_data="empdata_pos:0"
+        )])
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="empdata_pos:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def emp_in_position_kb(employees, pos_id: int) -> InlineKeyboardMarkup:
+    """Lavozim ichidagi xodimlar."""
+    rows = []
+    for emp in employees:
+        rows.append([InlineKeyboardButton(
+            text=f"👤 {emp['full_name']}",
+            callback_data=f"empdata_emp:{emp['id']}"
+        )])
+    rows.append([InlineKeyboardButton(
+        text="⬅️ Lavozimlar", callback_data="empdata_back"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
