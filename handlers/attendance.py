@@ -41,6 +41,10 @@ async def attendance_menu(message: Message, state: FSMContext):
     if not employee:
         await message.answer(texts.NOT_REGISTERED)
         return
+    # Boss davomatdan ozod
+    if employee["role"] == "boss":
+        await message.answer("ℹ️ Boss uchun davomat talab qilinmaydi.")
+        return
     await state.clear()
     today = get_today_attendance(employee["id"])
     last = today[-1] if today else None

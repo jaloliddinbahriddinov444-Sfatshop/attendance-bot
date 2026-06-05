@@ -513,6 +513,15 @@ def get_boss():
             "LIMIT 1"
         ).fetchone()
 
+def get_bosses():
+    """Barcha faol Bosslar ro'yxati (bir nechta bo'lishi mumkin)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE role = 'boss' AND is_active = 1 "
+            "ORDER BY full_name"
+        ).fetchall()
+
+
 
 def get_employees_by_role(role: str):
     """Berilgan roldagi barcha faol xodimlar."""
