@@ -78,6 +78,7 @@ async def main():
         profile.router,
         tasks.router,
         office_ip.router,
+        positions_handler.router,
         common.router,
     )
 

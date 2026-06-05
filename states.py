@@ -67,3 +67,21 @@ class FinanceEntry(StatesGroup):
     entering_other_category = State()
     entering_amount = State()
     entering_note = State()
+
+
+class PositionManage(StatesGroup):
+    """Bosh Admin: lavozim qo'shish/tahrirlash."""
+    waiting_name = State()
+    waiting_work_hours = State()
+    waiting_min_rate = State()
+    waiting_max_rate = State()
+    # Tahrirlash uchun
+    edit_choose_field = State()
+    edit_value = State()
+
+
+class EmployeePositionSet(StatesGroup):
+    """Admin: xodimga lavozim va kunlik stavka belgilash."""
+    choose_employee = State()
+    choose_position = State()
+    enter_daily_rate = State()

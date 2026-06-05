@@ -120,6 +120,7 @@ def grp_employees_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE)],
+            [KeyboardButton(text=texts.BTN_SET_POSITION)],
             [KeyboardButton(text=texts.BTN_ADMIN_LIST)],
             [KeyboardButton(text=texts.BTN_ADMIN_REMOVE)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
@@ -157,6 +158,7 @@ def grp_control_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
             [KeyboardButton(text=texts.BTN_OFFICE_IP)],
+            [KeyboardButton(text=texts.BTN_POSITIONS)],
             [KeyboardButton(text=texts.BTN_ADMIN_PROMOTE),
              KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
@@ -466,4 +468,27 @@ def att_actions_kb(emp_id: int, date_str: str) -> InlineKeyboardMarkup:
             text="⬅️ Boshqa kun",
             callback_data=f"att_edit:{emp_id}"
         )],
+    ])
+
+
+# ===== Lavozimlar tizimi =====
+
+def positions_list_kb(positions, prefix: str) -> InlineKeyboardMarkup:
+    """Lavozimlar ro'yxati inline tugmalar bilan."""
+    rows = []
+    for pos in positions:
+        rows.append([InlineKeyboardButton(
+            text=f"💼 {pos['name']} ({pos['work_hours']}h | {pos['min_rate']//1000}–{pos['max_rate']//1000}k)",
+            callback_data=f"{prefix}:{pos['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data=f"{prefix}:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def position_actions_kb(pos_id: int) -> InlineKeyboardMarkup:
+    """Lavozimga amallar: tahrirlash / o'chirish."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BTN_POS_DELETE,
+                              callback_data=f"pos_del:{pos_id}")],
+        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="pos_del:cancel")],
     ])

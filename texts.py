@@ -903,3 +903,71 @@ IP_CHANGED_ALERT = (
     "Agar bu HAQIQATAN ofis Wi-Fi'si bo'lsa — «qo'sh»ni bosing. "
     "Aks holda (xodim uydan yoki mobil internetdan) — e'tiborsiz qoldiring."
 )
+
+
+# ===== Lavozimlar tizimi =====
+BTN_POSITIONS = "📋 Lavozimlar"
+BTN_POS_ADD = "➕ Lavozim qo'shish"
+BTN_POS_EDIT = "✏️ Tahrirlash"
+BTN_POS_DELETE = "🗑 O'chirish"
+BTN_SET_POSITION = "💼 Lavozim/Stavka belgilash"
+
+POS_MENU_HEADER = (
+    "📋 <b>Lavozimlar tizimi</b>\n\n"
+    "Hozirgi lavozimlar:\n{list}\n\n"
+    "Yangi qo'shish yoki tahrirlash:"
+)
+POS_EMPTY = "<i>Hozircha lavozimlar yo'q</i>"
+POS_ITEM = "• <b>{name}</b> — {hours} soat/kun | {min:,}–{max:,} so'm\n"
+
+POS_ASK_NAME = "➕ <b>Yangi lavozim</b>\n\nLavozim nomini yozing:\n<i>Misol: Upakovkachilar</i>"
+POS_NAME_SHORT = "❌ Nom juda qisqa (kamida 3 belgi)."
+POS_ASK_HOURS = "🕐 Kunlik ish soatini yozing (masalan: <code>9</code> yoki <code>10</code>):"
+POS_HOURS_INVALID = "❌ Noto'g'ri. 1 dan 24 gacha son kiriting."
+POS_ASK_MIN_RATE = "💵 Minimal kunlik stavkani yozing (so'mda, masalan: <code>120000</code>):"
+POS_ASK_MAX_RATE = "💵 Maksimal kunlik stavkani yozing (so'mda, masalan: <code>150000</code>):"
+POS_RATE_INVALID = "❌ Noto'g'ri summa. Faqat musbat son kiriting."
+POS_ADDED = "✅ Lavozim qo'shildi: <b>{name}</b> ({hours} soat/kun, {min:,}–{max:,} so'm)"
+POS_DELETED = "🗑 Lavozim o'chirildi: <b>{name}</b>"
+POS_DELETE_HAS_EMPLOYEES = (
+    "❌ Bu lavozimga <b>{count}</b> ta xodim bog'langan — o'chirib bo'lmaydi.\n"
+    "Avval ularning lavozimini o'zgartiring."
+)
+
+SET_POS_PICK_EMP = "💼 <b>Lavozim/Stavka belgilash</b>\n\nXodimni tanlang:"
+SET_POS_PICK_POS = (
+    "💼 <b>{name}</b>\n\nLavozimni tanlang:\n\n"
+    "{list}"
+)
+SET_POS_POS_ITEM = "• <b>{name}</b> — {hours} soat | {min:,}–{max:,} so'm\n"
+SET_POS_ASK_RATE = (
+    "💵 <b>{emp_name}</b> → <b>{pos_name}</b>\n\n"
+    "Kunlik stavkani yozing (so'mda):\n"
+    "Diapazon: <b>{min:,} – {max:,} so'm</b>"
+)
+SET_POS_RATE_INVALID = "❌ Noto'g'ri summa. Faqat musbat son kiriting."
+SET_POS_DONE = (
+    "✅ Belgilandi:\n"
+    "👤 <b>{emp_name}</b>\n"
+    "💼 Lavozim: <b>{pos_name}</b> ({hours} soat/kun)\n"
+    "💵 Kunlik stavka: <b>{rate:,} so'm</b>"
+)
+
+# Ish haqqi ko'rsatish (yangi tizim)
+SALARY_HEADER_DAILY = (
+    "💰 <b>Mening ish haqqim — {month} {year}</b>\n\n"
+    "💼 Lavozim: <b>{position}</b>\n"
+    "🕐 Smena: <b>{work_hours} soat/kun</b>\n"
+    "💵 Kunlik stavka: <b>{daily_rate:,} so'm</b>\n"
+    "📅 Ishlagan kunlar: <b>{days} kun</b>\n"
+    "━━━━━━━━━━━━━━━━━\n"
+    "📊 <b>Hisob-kitob:</b>\n\n"
+    "🕐 Asosiy ish haqqi: <b>+{base:,} so'm</b>\n"
+    "💸 Avanslar: <b>−{avans:,} so'm</b>\n"
+    "⚠️ Jarimalar: <b>−{jarima:,} so'm</b>\n"
+    "⭐ Mukofotlar: <b>+{mukofot:,} so'm</b>\n"
+    "🎁 Bonuslar: <b>+{bonus:,} so'm</b>\n"
+    "🛒 Mahsulot xaridi: <b>−{mahsulot:,} so'm</b>\n"
+    "━━━━━━━━━━━━━━━━━\n"
+    "💰 <b>Jami: {total:,} so'm</b>"
+)
