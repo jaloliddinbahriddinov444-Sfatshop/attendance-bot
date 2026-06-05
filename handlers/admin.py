@@ -15,7 +15,8 @@ from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
     deactivate_employee, set_admin_status, get_active_employees_count,
     get_today_all_attendance, get_office_config, set_setting,
-    get_monthly_attendance, delete_today_attendance, add_manual_attendance,
+    get_monthly_attendance, delete_day_attendance, add_manual_attendance,
+    get_day_attendance,
     set_hourly_rate, add_salary_entry, cancel_salary_entry,
     get_salary_entry, get_active_salary_entries,
     is_month_closed, close_month, reopen_month,
@@ -567,6 +568,8 @@ async def admin_att_edit_start(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("att_edit:"))
 async def admin_att_edit_employee(call: CallbackQuery, state: FSMContext):
+    """Xodim tanlangach — oxirgi 7 kun ro'yxati ko'rsatiladi.
+    Shu callback 'Boshqa kun' tugmasidan ham qaytib keladi."""
     me = get_employee_by_telegram_id(call.from_user.id)
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
@@ -574,6 +577,7 @@ async def admin_att_edit_employee(call: CallbackQuery, state: FSMContext):
 
     parts = call.data.split(":")
     if parts[1] == "cancel":
+        await state.clear()
         await call.message.edit_text(texts.CANCELLED)
         await call.answer()
         return
@@ -584,15 +588,64 @@ async def admin_att_edit_employee(call: CallbackQuery, state: FSMContext):
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
-    att_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🟢 Keldim qo'shish", callback_data=f"att_add:in:{emp_id}")],
-        [InlineKeyboardButton(text="🔴 Ketdim qo'shish", callback_data=f"att_add:out:{emp_id}")],
-        [InlineKeyboardButton(text="🗑 Bugungi yozuvlarni tozalash", callback_data=f"att_reset:{emp_id}")],
-        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="att_edit:cancel")],
-    ])
     await call.message.edit_text(
-        texts.ADMIN_ATT_ACTIONS.format(name=emp["full_name"]),
-        reply_markup=att_kb
+        texts.ADMIN_ATT_SELECT_DAY.format(name=emp["full_name"]),
+        reply_markup=kb.att_days_kb(emp_id)
+    )
+    await call.answer()
+
+
+def _format_day_records(records) -> str:
+    """Kun yozuvlarini ko'rinarli ro'yxat qilib qaytaradi."""
+    if not records:
+        return texts.ADMIN_ATT_DAY_NO_RECORDS
+    lines = []
+    for r in records:
+        emoji = "🟢" if r["check_type"] == "in" else "🔴"
+        label = "kelish" if r["check_type"] == "in" else "ketish"
+        time_str = to_local(r["timestamp"]).strftime("%H:%M")
+        lines.append(texts.ADMIN_ATT_DAY_RECORD_LINE.format(
+            emoji=emoji, time=time_str, label=label
+        ).rstrip())
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data.startswith("att_day:"))
+async def admin_att_day_picked(call: CallbackQuery, state: FSMContext):
+    """Kun tanlangach — yopiq oy tekshiruvi, keyin kun amal ekrani."""
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    _, emp_id_s, date_str = call.data.split(":")
+    emp_id = int(emp_id_s)
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    y, mo, d = map(int, date_str.split("-"))
+    if is_month_closed(y, mo):
+        await call.answer(
+            texts.ADMIN_ATT_MONTH_CLOSED_ALERT.format(
+                month_name=texts.MONTHS_UZ[mo], year=y
+            ),
+            show_alert=True
+        )
+        return
+
+    from datetime import date as _date
+    weekday = texts.WEEKDAYS_UZ[_date(y, mo, d).weekday()]
+    pretty_date = f"{d:02d}.{mo:02d}.{y}"
+    records = get_day_attendance(emp_id, date_str)
+
+    await call.message.edit_text(
+        texts.ADMIN_ATT_DAY_ACTIONS.format(
+            name=emp["full_name"], date=pretty_date, weekday=weekday,
+            records=_format_day_records(records),
+        ),
+        reply_markup=kb.att_actions_kb(emp_id, date_str)
     )
     await call.answer()
 
@@ -604,16 +657,43 @@ async def admin_att_add(call: CallbackQuery, state: FSMContext):
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
 
-    _, check_type, emp_id = call.data.split(":")
-    emp = get_employee_by_id(int(emp_id))
+    # Yangi format: att_add:{check_type}:{emp_id}:{YYYY-MM-DD}
+    # Eski format (zaxira): att_add:{check_type}:{emp_id} -> bugungi sana
+    parts = call.data.split(":")
+    check_type = parts[1]
+    emp_id = int(parts[2])
+    date_str = parts[3] if len(parts) >= 4 else tz_now().strftime("%Y-%m-%d")
+
+    emp = get_employee_by_id(emp_id)
     if not emp:
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
+    # Yopiq oy tekshiruvi (eskirgan callback xavfsizligi uchun)
+    y, mo, _ = map(int, date_str.split("-"))
+    if is_month_closed(y, mo):
+        await call.answer(
+            texts.ADMIN_ATT_MONTH_CLOSED_ALERT.format(
+                month_name=texts.MONTHS_UZ[mo], year=y
+            ),
+            show_alert=True
+        )
+        return
+
     action_name = "🟢 Keldim" if check_type == "in" else "🔴 Ketdim"
-    await state.update_data(att_employee_id=int(emp_id), att_check_type=check_type)
+    from datetime import date as _date
+    yy, mm, dd = map(int, date_str.split("-"))
+    weekday = texts.WEEKDAYS_UZ[_date(yy, mm, dd).weekday()]
+    pretty_date = f"{dd:02d}.{mm:02d}.{yy}"
+
+    await state.update_data(
+        att_employee_id=emp_id, att_check_type=check_type, att_date=date_str
+    )
     await call.message.edit_text(
-        texts.ADMIN_ATT_ENTER_TIME.format(name=emp["full_name"], action=action_name)
+        texts.ADMIN_ATT_ENTER_TIME.format(
+            name=emp["full_name"], date=pretty_date,
+            weekday=weekday, action=action_name
+        )
     )
     await state.set_state(AdminPanel.waiting_att_time)
     await call.answer()
@@ -628,16 +708,28 @@ async def admin_att_save_time(message: Message, state: FSMContext):
     data = await state.get_data()
     emp_id = data["att_employee_id"]
     check_type = data["att_check_type"]
+    date_str = data.get("att_date")  # Phase 4.5: tanlangan kun
     time_str = message.text.strip()
 
     emp = get_employee_by_id(emp_id)
-    add_manual_attendance(emp_id, check_type, time_str)
+    add_manual_attendance(emp_id, check_type, time_str, date_local=date_str)
 
     action_name = "🟢 Keldim" if check_type == "in" else "🔴 Ketdim"
+
+    from datetime import date as _date
+    if date_str:
+        yy, mm, dd = map(int, date_str.split("-"))
+    else:
+        local_now = tz_now()
+        yy, mm, dd = local_now.year, local_now.month, local_now.day
+    weekday = texts.WEEKDAYS_UZ[_date(yy, mm, dd).weekday()]
+    pretty_date = f"{dd:02d}.{mm:02d}.{yy}"
+
     await state.clear()
     await message.answer(
         texts.ADMIN_ATT_SAVED.format(
-            name=emp["full_name"], action=action_name, time=time_str
+            name=emp["full_name"], date=pretty_date, weekday=weekday,
+            action=action_name, time=time_str
         ),
         reply_markup=_admin_kb(message)
     )
@@ -650,15 +742,38 @@ async def admin_att_reset(call: CallbackQuery):
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
 
-    emp_id = int(call.data.split(":")[1])
+    # Yangi format: att_reset:{emp_id}:{YYYY-MM-DD}
+    # Eski format (zaxira): att_reset:{emp_id} -> bugungi sana
+    parts = call.data.split(":")
+    emp_id = int(parts[1])
+    date_str = parts[2] if len(parts) >= 3 else tz_now().strftime("%Y-%m-%d")
+
     emp = get_employee_by_id(emp_id)
     if not emp:
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
-    count = delete_today_attendance(emp_id)
+    y, mo, _ = map(int, date_str.split("-"))
+    if is_month_closed(y, mo):
+        await call.answer(
+            texts.ADMIN_ATT_MONTH_CLOSED_ALERT.format(
+                month_name=texts.MONTHS_UZ[mo], year=y
+            ),
+            show_alert=True
+        )
+        return
+
+    count = delete_day_attendance(emp_id, date_str)
+
+    from datetime import date as _date
+    yy, mm, dd = map(int, date_str.split("-"))
+    weekday = texts.WEEKDAYS_UZ[_date(yy, mm, dd).weekday()]
+    pretty_date = f"{dd:02d}.{mm:02d}.{yy}"
+
     await call.message.edit_text(
-        texts.ADMIN_ATT_RESET_DONE.format(name=emp["full_name"], count=count)
+        texts.ADMIN_ATT_RESET_DONE.format(
+            name=emp["full_name"], date=pretty_date, weekday=weekday, count=count
+        )
     )
     await call.answer("✅ Tozalandi")
 

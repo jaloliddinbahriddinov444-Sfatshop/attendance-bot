@@ -609,23 +609,44 @@ def record_photo_used(file_unique_id: str, employee_id: int):
 
 # ===== Admin davomat tahrirlash =====
 
-def delete_today_attendance(employee_id: int) -> int:
-    """Bugungi davomat yozuvlarini o'chirish"""
+def get_day_attendance(employee_id: int, date_local: str):
+    """Berilgan mahalliy kun (YYYY-MM-DD, Toshkent vaqti) uchun barcha
+    davomat yozuvlari (eski → yangi tartibda)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT id, check_type, timestamp FROM attendance "
+            "WHERE employee_id = ? "
+            "AND date(timestamp, '+5 hours') = ? "
+            "ORDER BY timestamp ASC",
+            (employee_id, date_local)
+        ).fetchall()
+
+
+def delete_day_attendance(employee_id: int, date_local: str) -> int:
+    """Berilgan mahalliy kun davomat yozuvlarini o'chirish.
+    date_local: 'YYYY-MM-DD' (Toshkent vaqti)."""
     with get_db() as conn:
         cursor = conn.execute(
             "DELETE FROM attendance WHERE employee_id = ? "
-            "AND date(timestamp, '+5 hours') = date('now', '+5 hours')",
-            (employee_id,)
+            "AND date(timestamp, '+5 hours') = ?",
+            (employee_id, date_local)
         )
         return cursor.rowcount
 
 
-def add_manual_attendance(employee_id: int, check_type: str, time_str: str):
-    """Admin tomonidan qo'lda davomat qo'shish (bugungi sana, berilgan vaqt)"""
+def add_manual_attendance(employee_id: int, check_type: str, time_str: str,
+                          date_local: str = None):
+    """Admin tomonidan qo'lda davomat qo'shish.
+    date_local: 'YYYY-MM-DD' mahalliy sana (None bo'lsa — bugun)."""
+    from datetime import datetime as _dt
     from tzutil import now as tz_now, OFFSET
     h, m = map(int, time_str.split(":"))
+    if date_local:
+        y, mo, d = map(int, date_local.split("-"))
+        ts_local = _dt(y, mo, d, h, m, 0)
+    else:
+        ts_local = tz_now().replace(hour=h, minute=m, second=0, microsecond=0)
     # Admin mahalliy (Toshkent) vaqt kiritadi -> bazaga UTC saqlaymiz
-    ts_local = tz_now().replace(hour=h, minute=m, second=0, microsecond=0)
     ts = ts_local - OFFSET
     with get_db() as conn:
         conn.execute(

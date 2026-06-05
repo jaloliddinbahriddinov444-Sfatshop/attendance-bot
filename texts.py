@@ -445,22 +445,51 @@ MONTHS_UZ = {
 # ===== Admin davomat tahrirlash =====
 BTN_ADMIN_ATT_EDIT = "📝 Davomatni tahrirlash"
 
+# Hafta kunlari — 0=Dushanba, 6=Yakshanba (datetime.weekday() bilan mos)
+WEEKDAYS_UZ = [
+    "Dushanba", "Seshanba", "Chorshanba", "Payshanba",
+    "Juma", "Shanba", "Yakshanba"
+]
+
 ADMIN_ATT_SELECT_EMPLOYEE = "📝 <b>Davomat tahrirlash</b>\n\nXodimni tanlang:"
 
-ADMIN_ATT_ACTIONS = (
-    "📝 <b>{name}</b> uchun:\n\n"
+ADMIN_ATT_SELECT_DAY = (
+    "📅 <b>{name}</b>\n\n"
+    "Qaysi kunni tahrirlaysiz? (oxirgi 7 kun)"
+)
+
+ADMIN_ATT_DAY_ACTIONS = (
+    "📝 <b>{name}</b> — {date} ({weekday})\n\n"
+    "<b>Hozirgi yozuvlar:</b>\n{records}\n\n"
     "Qaysi amalni bajarasiz?"
 )
 
+ADMIN_ATT_DAY_RECORD_LINE = "{emoji} {time} ({label})\n"
+ADMIN_ATT_DAY_NO_RECORDS = "<i>Hozircha yozuv yo'q</i>"
+
+ADMIN_ATT_MONTH_CLOSED = (
+    "🔒 <b>{month_name} {year}</b> oyi yopilgan — bu oyga davomat "
+    "o'zgartirib bo'lmaydi.\n\n"
+    "Avval Bosh Admin oyni qayta ochishi kerak."
+)
+ADMIN_ATT_MONTH_CLOSED_ALERT = (
+    "🔒 {month_name} {year} oyi yopilgan — o'zgartirib bo'lmaydi."
+)
+
 ADMIN_ATT_ENTER_TIME = (
-    "🕐 <b>{name}</b> — {action}\n\n"
+    "🕐 <b>{name}</b> — {date} ({weekday})\n"
+    "{action}\n\n"
     "Vaqtni kiriting (masalan, <code>09:15</code>):"
 )
 
-ADMIN_ATT_SAVED = "✅ <b>{name}</b> — {action} soat <b>{time}</b> da qayd etildi."
+ADMIN_ATT_SAVED = (
+    "✅ <b>{name}</b> — {date} ({weekday})\n"
+    "{action} soat <b>{time}</b> da qayd etildi."
+)
 
 ADMIN_ATT_RESET_DONE = (
-    "🗑 <b>{name}</b> bugungi davomat yozuvlari tozalandi.\n\n"
+    "🗑 <b>{name}</b> — {date} ({weekday})\n"
+    "Davomat yozuvlari tozalandi.\n\n"
     "O'chirilgan yozuvlar: <b>{count}</b> ta"
 )
 

@@ -417,3 +417,53 @@ def addemp_confirm_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="addemp:yes"),
          InlineKeyboardButton(text="❌ Bekor", callback_data="addemp:no")]
     ])
+
+
+# ===== Davomat tahrirlash: kun tanlash + kunga xos amallar =====
+
+def att_days_kb(emp_id: int) -> InlineKeyboardMarkup:
+    """Oxirgi 7 kun (bugundan boshlab orqaga) — har biri tugma.
+    Callback: att_day:{emp_id}:YYYY-MM-DD"""
+    from datetime import timedelta
+    from tzutil import now as tz_now
+    today = tz_now().date()
+    rows = []
+    for i in range(7):
+        d = today - timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        label_date = d.strftime("%d.%m")
+        if i == 0:
+            label = f"📅 {label_date} (Bugun)"
+        elif i == 1:
+            label = f"📅 {label_date} (Kecha)"
+        else:
+            label = f"📅 {label_date} ({texts.WEEKDAYS_UZ[d.weekday()]})"
+        rows.append([InlineKeyboardButton(
+            text=label, callback_data=f"att_day:{emp_id}:{date_str}"
+        )])
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="att_edit:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def att_actions_kb(emp_id: int, date_str: str) -> InlineKeyboardMarkup:
+    """Tanlangan kun uchun amallar. Sana callback'da olib ketiladi."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🟢 Keldim qo'shish",
+            callback_data=f"att_add:in:{emp_id}:{date_str}"
+        )],
+        [InlineKeyboardButton(
+            text="🔴 Ketdim qo'shish",
+            callback_data=f"att_add:out:{emp_id}:{date_str}"
+        )],
+        [InlineKeyboardButton(
+            text="🗑 Bu kun yozuvlarini tozalash",
+            callback_data=f"att_reset:{emp_id}:{date_str}"
+        )],
+        [InlineKeyboardButton(
+            text="⬅️ Boshqa kun",
+            callback_data=f"att_edit:{emp_id}"
+        )],
+    ])
