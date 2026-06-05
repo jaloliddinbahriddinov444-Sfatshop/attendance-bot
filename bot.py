@@ -12,7 +12,7 @@ from database import init_db
 from services.wifi_verify import start_verify_server
 
 # Handlerlar
-from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip
+from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler
 
 
 logging.basicConfig(
