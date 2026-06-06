@@ -127,8 +127,10 @@ def init_db():
             category TEXT NOT NULL,
             amount INTEGER NOT NULL,
             note TEXT,
+            linked_employee_id INTEGER,
             entry_date TIMESTAMP DEFAULT (datetime('now')),
-            FOREIGN KEY (owner_id) REFERENCES employees (id) ON DELETE CASCADE
+            FOREIGN KEY (owner_id) REFERENCES employees (id) ON DELETE CASCADE,
+            FOREIGN KEY (linked_employee_id) REFERENCES employees (id) ON DELETE SET NULL
         );
         CREATE INDEX IF NOT EXISTS idx_finance_owner_date
             ON finance_entries(owner_id, entry_date);
@@ -975,16 +977,19 @@ def get_open_tasks_with_skips(employee_id: int):
 # Konventsiya: har Boss/Bosh Admin uchun alohida daftar (owner_id orqali ajratiladi).
 
 def create_finance_entry(owner_id: int, entry_type: str, category: str,
-                         amount: int, note: str = None) -> int:
+                         amount: int, note: str = None,
+                         linked_employee_id: int = None) -> int:
     """Kirim yoki chiqim yozuvi qo'shish.
     entry_type: 'income' yoki 'expense'.
+    linked_employee_id: Avans uchun xodim ID (ixtiyoriy).
     """
     with get_db() as conn:
         cursor = conn.execute(
             "INSERT INTO finance_entries "
-            "(owner_id, entry_type, category, amount, note) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (owner_id, entry_type, category, amount, (note or None))
+            "(owner_id, entry_type, category, amount, note, linked_employee_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (owner_id, entry_type, category, amount,
+             (note or None), linked_employee_id or None)
         )
         return cursor.lastrowid
 

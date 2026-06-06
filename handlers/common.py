@@ -12,6 +12,16 @@ from config import MAX_EMPLOYEES, INITIAL_ADMIN_ID
 router = Router()
 
 
+def _main_kb(employee):
+    """Xodim roliga qarab to'g'ri asosiy klaviaturani qaytaradi."""
+    role = employee["role"] if employee else "employee"
+    if role == "bosh_admin":
+        return kb.main_menu_kb(is_bosh_admin=True)
+    if role == "boss":
+        return kb.main_menu_kb(is_boss=True)
+    return kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
@@ -20,22 +30,18 @@ async def cmd_start(message: Message, state: FSMContext):
     if employee:
         await message.answer(
             texts.WELCOME_BACK.format(name=employee["full_name"]),
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+            reply_markup=_main_kb(employee)
         )
         return
 
     from states import Registration
 
-    # Oqim A — INITIAL_ADMIN bo'sh bazada o'zini bootstrap qiladi (yagona
-    # o'zi-ro'yxatdan o'tish istisnosi). Qolganlar admin tomonidan qo'shiladi.
     if message.from_user.id == INITIAL_ADMIN_ID and get_active_employees_count() == 0:
         await message.answer(texts.WELCOME_NEW, reply_markup=kb.remove_kb())
         await message.answer(texts.REG_START, reply_markup=kb.cancel_kb())
         await state.set_state(Registration.waiting_full_name)
         return
 
-    # Oqim B — begona /start: telefon orqali bog'lashga urinish.
-    # Admin oldindan qo'shgan bo'lsa, kontakt mos kelib selfi+karta so'raladi.
     await message.answer(texts.LINK_ASK_PHONE, reply_markup=kb.phone_request_kb())
     await state.set_state(Registration.linking_phone)
 
@@ -46,10 +52,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
     await state.clear()
     employee = get_employee_by_telegram_id(message.from_user.id)
     if employee:
-        await message.answer(
-            texts.CANCELLED,
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
-        )
+        await message.answer(texts.CANCELLED, reply_markup=_main_kb(employee))
     else:
         await message.answer(texts.CANCELLED, reply_markup=kb.remove_kb())
 
@@ -61,20 +64,13 @@ async def go_back(message: Message, state: FSMContext):
     if not employee:
         await message.answer(texts.NOT_REGISTERED)
         return
-    await message.answer(
-        texts.MAIN_MENU,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
-    )
+    await message.answer(texts.MAIN_MENU, reply_markup=_main_kb(employee))
 
 
-# Eng ohirgi: tushunilmagan xabarlar uchun
 @router.message(F.text)
 async def unknown_text(message: Message):
     employee = get_employee_by_telegram_id(message.from_user.id)
     if not employee:
         await message.answer(texts.NOT_REGISTERED)
         return
-    await message.answer(
-        texts.UNKNOWN_COMMAND,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
-    )
+    await message.answer(texts.UNKNOWN_COMMAND, reply_markup=_main_kb(employee))

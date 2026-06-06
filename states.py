@@ -7,15 +7,12 @@ class Registration(StatesGroup):
     waiting_phone = State()
     waiting_position = State()
     waiting_face_photo = State()
-    # Phase 4 — admin oldindan qo'shgan xodimni bog'lash (stranger kontakt kutish)
     linking_phone = State()
-    # Phase 4 — ro'yxatdan o'tish oxirida karta ma'lumotlari
     waiting_card_number = State()
     waiting_card_holder_name = State()
 
 
 class AdminAddEmployee(StatesGroup):
-    """Admin/Bosh Admin tomonidan xodimni oldindan qo'shish (Phase 4)."""
     waiting_name = State()
     waiting_phone = State()
     waiting_position = State()
@@ -23,14 +20,13 @@ class AdminAddEmployee(StatesGroup):
 
 
 class CardUpdate(StatesGroup):
-    """Profil orqali karta ma'lumotlarini yangilash (Phase 4)."""
     waiting_number = State()
     waiting_holder_name = State()
 
 
 class Attendance(StatesGroup):
     waiting_check_type = State()
-    waiting_wifi_confirm = State()  # Wi-Fi havolasi tasdiqlashni kutish
+    waiting_wifi_confirm = State()
     waiting_selfie = State()
 
 
@@ -48,14 +44,12 @@ class AdminPanel(StatesGroup):
 
 
 class AdminSalary(StatesGroup):
-    """Ish haqqi yozuvlarini boshqarish"""
     add_amount = State()
     add_reason = State()
     cancel_reason = State()
 
 
 class TaskCreate(StatesGroup):
-    """Admin/Boss tomonidan vazifa yaratish."""
     choosing_employee = State()
     entering_title = State()
     entering_description = State()
@@ -65,5 +59,21 @@ class TaskCreate(StatesGroup):
 class FinanceEntry(StatesGroup):
     """Boss/Bosh Admin moliya yozuvi."""
     entering_other_category = State()
+    selecting_employee = State()   # Avans uchun xodim tanlash (YANGI)
     entering_amount = State()
     entering_note = State()
+
+
+class PositionManage(StatesGroup):
+    waiting_name = State()
+    waiting_work_hours = State()
+    waiting_min_rate = State()
+    waiting_max_rate = State()
+    edit_choose_field = State()
+    edit_value = State()
+
+
+class EmployeePositionSet(StatesGroup):
+    choose_employee = State()
+    choose_position = State()
+    enter_daily_rate = State()

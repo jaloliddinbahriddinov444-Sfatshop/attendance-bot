@@ -805,16 +805,22 @@ BOSS_NOTIFY_REMOVED = "ℹ️ Sizning Boss rolingiz o'chirildi."
 # ===== Moliya bo'limi (Phase 4) =====
 
 # Turkumlar: {key: (emoji, display_name)}
-FINANCE_CATEGORIES = {
-    "food":          ("🍔", "Oziq-ovqat"),
-    "transport":     ("🚗", "Transport"),
-    "salary_pay":    ("💰", "Ish haqi to'lovi"),
-    "rent":          ("🏠", "Ijara"),
-    "product_sale":  ("📦", "Mahsulot sotuvi"),
-    "supplies":      ("📋", "Xom ashyo / mahsulot xaridi"),
-    "utilities":     ("💡", "Kommunal"),
-    "other":         ("📝", "Boshqa"),
+FINANCE_EXPENSE_CATEGORIES = {
+    "food":     ("🍽", "Ovqat"),
+    "transport":("🚌", "Yo'lkira"),
+    "supply":   ("📦", "Ta'minot"),
+    "expense":  ("💸", "Xarajat"),
+    "advance":  ("👤", "Hodimlar uchun Avans"),
+    "other":    ("📝", "Boshqa"),
 }
+
+FINANCE_INCOME_CATEGORIES = {
+    "podachot": ("📊", "Podachot"),
+    "sales":    ("💵", "Sotuvdan tushum"),
+    "other":    ("📝", "Boshqa"),
+}
+
+FINANCE_CATEGORIES = {**FINANCE_EXPENSE_CATEGORIES, **FINANCE_INCOME_CATEGORIES}
 
 # Tugmalar
 BTN_FINANCE_INCOME = "➕ Kirim qo'shish"

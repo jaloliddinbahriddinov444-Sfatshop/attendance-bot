@@ -1,7 +1,9 @@
-"""Moliya bo'limi — Boss va Bosh Admin uchun shaxsiy daftarlar.
+"""Moliya bo'limi — Bosh Admin va Boss uchun.
 
-Konventsiya: har bir Boss va Bosh Admin alohida daftarga ega.
-Yozuvlar `finance_entries.owner_id` orqali ajratiladi.
+Yangi oqim:
+  Kirim: Podachot | Sotuvdan tushum | Boshqa → Summa → Izoh → Saqlash
+  Chiqim: Ovqat | Yo'lkira | Ta'minot | Xarajat | Boshqa → Summa → Izoh → Saqlash
+           Hodimlar uchun Avans → Xodim tanlash → Summa → Izoh → Saqlash
 """
 import io
 import logging
@@ -17,6 +19,8 @@ import keyboards as kb
 from states import FinanceEntry
 from database import (
     get_employee_by_telegram_id,
+    get_all_employees,
+    get_employee_by_id,
     create_finance_entry,
     get_monthly_finance_entries,
     get_monthly_finance_summary,
@@ -37,19 +41,18 @@ def _can_use_finance(emp) -> bool:
 
 
 def _back_kb(emp):
-    """Moliyadan chiqqanda qaytadigan menyu (Bosh Admin → admin menyu, Boss → Boss uy menyusi)."""
     try:
         role = emp["role"]
     except (KeyError, IndexError):
         role = "employee"
+    if role == "bosh_admin":
+        return kb.main_menu_kb(is_bosh_admin=True)
     if role == "boss":
         return kb.main_menu_kb(is_boss=True)
-    if role == "bosh_admin":
-        return kb.admin_menu_kb(is_bosh_admin=True)
     return kb.main_menu_kb(is_admin=bool(emp["is_admin"]))
 
 
-# ===== Kirish: "Moliya bo'limi" =====
+# ===== Kirish =====
 
 @router.message(F.text == texts.BTN_BOSS_FINANCE)
 async def finance_open(message: Message, state: FSMContext):
@@ -61,7 +64,7 @@ async def finance_open(message: Message, state: FSMContext):
     await message.answer(texts.FINANCE_MENU, reply_markup=kb.finance_menu_kb())
 
 
-# ===== Kirim/chiqim qo'shish: turkum tanlash =====
+# ===== Kirim / Chiqim boshlash =====
 
 @router.message(F.text == texts.BTN_FINANCE_INCOME)
 async def finance_add_income_start(message: Message, state: FSMContext):
@@ -70,8 +73,10 @@ async def finance_add_income_start(message: Message, state: FSMContext):
         await message.answer(texts.FINANCE_NO_PERMISSION)
         return
     await state.clear()
-    await message.answer(texts.FINANCE_PICK_CATEGORY_INCOME,
-                         reply_markup=kb.finance_categories_kb("income"))
+    await message.answer(
+        texts.FINANCE_PICK_CATEGORY_INCOME,
+        reply_markup=kb.finance_categories_kb("income")
+    )
 
 
 @router.message(F.text == texts.BTN_FINANCE_EXPENSE)
@@ -81,9 +86,13 @@ async def finance_add_expense_start(message: Message, state: FSMContext):
         await message.answer(texts.FINANCE_NO_PERMISSION)
         return
     await state.clear()
-    await message.answer(texts.FINANCE_PICK_CATEGORY_EXPENSE,
-                         reply_markup=kb.finance_categories_kb("expense"))
+    await message.answer(
+        texts.FINANCE_PICK_CATEGORY_EXPENSE,
+        reply_markup=kb.finance_categories_kb("expense")
+    )
 
+
+# ===== Kategoriya tanlash =====
 
 @router.callback_query(F.data.startswith("fin_cat:"))
 async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
@@ -94,27 +103,55 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
 
     parts = call.data.split(":")
     if len(parts) != 3:
-        await call.answer("❌ Xato", show_alert=True)
+        await call.answer("Xato", show_alert=True)
         return
     _, entry_type, cat_key = parts
+
     if cat_key == "cancel":
         await state.clear()
         await call.message.edit_text(texts.CANCELLED)
         await call.answer()
         return
-    if cat_key not in texts.FINANCE_CATEGORIES:
-        await call.answer("❌ Noma'lum turkum", show_alert=True)
+
+    # Kategoriya lug'atidan olish
+    all_cats = texts.FINANCE_CATEGORIES
+    if cat_key not in all_cats:
+        await call.answer("Noma'lum turkum", show_alert=True)
         return
 
-    emoji, cat_name = texts.FINANCE_CATEGORIES[cat_key]
+    emoji, cat_name = all_cats[cat_key]
     type_name = "Kirim" if entry_type == "income" else "Chiqim"
+
     await state.update_data(
         fin_owner=me["id"],
         fin_type=entry_type,
         fin_cat_key=cat_key,
         fin_cat_name=cat_name,
         fin_cat_emoji=emoji,
+        fin_linked_emp_id=None,
+        fin_linked_emp_name=None,
     )
+    await call.answer()
+
+    # Avans bo'lsa — xodim tanlash
+    if cat_key == "advance" and entry_type == "expense":
+        employees = get_all_employees(active_only=True)
+        # Boss va Bosh Admin hisoblanmaydi
+        employees = [e for e in employees if e["role"] not in ("boss", "bosh_admin")]
+        if not employees:
+            await call.message.edit_text(
+                "❌ Aktiv xodimlar yo'q.",
+            )
+            return
+        await call.message.edit_text(texts.FINANCE_PICK_EMPLOYEE_ADVANCE)
+        await call.message.answer(
+            "Xodimni tanlang:",
+            reply_markup=kb.finance_employees_kb(employees)
+        )
+        await state.set_state(FinanceEntry.selecting_employee)
+        return
+
+    # Oddiy kategoriya — summaga o'tish
     await call.message.edit_text(
         texts.FINANCE_ASK_AMOUNT.format(
             emoji="➕" if entry_type == "income" else "➖",
@@ -123,7 +160,52 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
         )
     )
     await state.set_state(FinanceEntry.entering_amount)
+
+
+# ===== Avans: xodim tanlash =====
+
+@router.callback_query(FinanceEntry.selecting_employee, F.data.startswith("fin_emp:"))
+async def finance_employee_chosen(call: CallbackQuery, state: FSMContext):
+    emp_id_str = call.data.split(":")[-1]
+
+    if emp_id_str == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.message.answer(texts.FINANCE_MENU, reply_markup=kb.finance_menu_kb())
+        await call.answer()
+        return
+
+    try:
+        emp_id = int(emp_id_str)
+    except ValueError:
+        await call.answer("Xato ID", show_alert=True)
+        return
+
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("Xodim topilmadi", show_alert=True)
+        return
+
+    data = await state.get_data()
+    await state.update_data(
+        fin_linked_emp_id=emp_id,
+        fin_linked_emp_name=emp["full_name"],
+    )
     await call.answer()
+
+    type_name = "Chiqim"
+    cat_name = data["fin_cat_name"]
+    emoji = data["fin_cat_emoji"]
+
+    await call.message.edit_text(
+        f"👤 Xodim: <b>{emp['full_name']}</b>\n\n"
+        + texts.FINANCE_ASK_AMOUNT.format(
+            emoji="➖",
+            type_name=type_name,
+            category=f"{emoji} {cat_name}",
+        )
+    )
+    await state.set_state(FinanceEntry.entering_amount)
 
 
 # ===== Summa kiritish =====
@@ -131,7 +213,6 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
 @router.message(FinanceEntry.entering_amount, F.text)
 async def finance_amount_handler(message: Message, state: FSMContext):
     if message.text == texts.BTN_CANCEL:
-        me = get_employee_by_telegram_id(message.from_user.id)
         await state.clear()
         await message.answer(texts.CANCELLED, reply_markup=kb.finance_menu_kb())
         return
@@ -177,19 +258,25 @@ async def finance_note_handler(message: Message, state: FSMContext):
             note = note[:500]
 
     data = await state.get_data()
+    linked_emp_id = data.get("fin_linked_emp_id")
+
     entry_id = create_finance_entry(
         owner_id=data["fin_owner"],
         entry_type=data["fin_type"],
         category=data["fin_cat_key"],
         amount=data["fin_amount"],
         note=note,
+        linked_employee_id=linked_emp_id,
     )
-    logger.info("Finance entry %s yaratildi: owner=%s, %s %s",
+    logger.info("Finance entry %s: owner=%s %s %s",
                 entry_id, data["fin_owner"], data["fin_type"], data["fin_amount"])
 
     type_emoji = "➕" if data["fin_type"] == "income" else "➖"
     type_name = "Kirim" if data["fin_type"] == "income" else "Chiqim"
     note_line = texts.FINANCE_NOTE_FRAGMENT.format(note=note) if note else ""
+    emp_line = ""
+    if linked_emp_id and data.get("fin_linked_emp_name"):
+        emp_line = texts.FINANCE_EMP_FRAGMENT.format(name=data["fin_linked_emp_name"])
 
     await message.answer(
         texts.FINANCE_SAVED.format(
@@ -200,6 +287,7 @@ async def finance_note_handler(message: Message, state: FSMContext):
             amount=data["fin_amount"],
             when=tz_now().strftime("%d.%m.%Y %H:%M"),
             note_line=note_line,
+            emp_line=emp_line,
         ),
         reply_markup=kb.finance_menu_kb()
     )
@@ -286,8 +374,6 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
     wb = Workbook()
-
-    # Sheet 1: Yozuvlar
     ws = wb.active
     ws.title = "Yozuvlar"
 
@@ -296,10 +382,10 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
     title.font = Font(bold=True, size=14, color="FFFFFF")
     title.fill = PatternFill(start_color="2E5C8A", end_color="2E5C8A", fill_type="solid")
     title.alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=5)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
     ws.row_dimensions[1].height = 22
 
-    headers = ["Sana", "Tur", "Turkum", "Summa (so'm)", "Izoh"]
+    headers = ["Sana", "Tur", "Turkum", "Xodim (avans)", "Summa (so'm)", "Izoh"]
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     thin = Side(border_style="thin", color="808080")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -312,26 +398,31 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
 
     for i, e in enumerate(entries, start=4):
         cat_info = texts.FINANCE_CATEGORIES.get(e["category"], ("📋", e["category"]))
-        ws.cell(row=i, column=1,
-                value=fmt_local(e["entry_date"], "%d.%m.%Y %H:%M"))
-        ws.cell(row=i, column=2,
-                value="Kirim" if e["entry_type"] == "income" else "Chiqim")
+        ws.cell(row=i, column=1, value=fmt_local(e["entry_date"], "%d.%m.%Y %H:%M"))
+        ws.cell(row=i, column=2, value="Kirim" if e["entry_type"] == "income" else "Chiqim")
         ws.cell(row=i, column=3, value=f"{cat_info[0]} {cat_info[1]}")
-        amount_cell = ws.cell(row=i, column=4, value=e["amount"])
+        # Xodim (avans uchun)
+        emp_name = ""
+        if e.get("linked_employee_id"):
+            emp = get_employee_by_id(e["linked_employee_id"])
+            emp_name = emp["full_name"] if emp else ""
+        ws.cell(row=i, column=4, value=emp_name)
+        amount_cell = ws.cell(row=i, column=5, value=e["amount"])
         amount_cell.number_format = '#,##0'
         if e["entry_type"] == "income":
             amount_cell.font = Font(color="006400")
         else:
             amount_cell.font = Font(color="8B0000")
-        ws.cell(row=i, column=5, value=e["note"] or "")
-        for c in range(1, 6):
+        ws.cell(row=i, column=6, value=e["note"] or "")
+        for c in range(1, 7):
             ws.cell(row=i, column=c).border = border
 
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 10
-    ws.column_dimensions["C"].width = 26
-    ws.column_dimensions["D"].width = 18
-    ws.column_dimensions["E"].width = 40
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 22
+    ws.column_dimensions["E"].width = 18
+    ws.column_dimensions["F"].width = 36
 
     # Sheet 2: Xulosa
     ws2 = wb.create_sheet("Xulosa")
@@ -352,26 +443,23 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
             ws2.cell(row=row, column=1, value=type_label)
             ws2.cell(row=row, column=2, value=f"{cat_info[0]} {cat_info[1]}")
             ws2.cell(row=row, column=3, value=r["cnt"])
-            amount_cell = ws2.cell(row=row, column=4, value=r["total"])
-            amount_cell.number_format = '#,##0'
-            amount_cell.font = Font(color="006400" if tp == "income" else "8B0000")
+            ac = ws2.cell(row=row, column=4, value=r["total"])
+            ac.number_format = '#,##0'
+            ac.font = Font(color="006400" if tp == "income" else "8B0000")
             for c in range(1, 5):
                 ws2.cell(row=row, column=c).border = border
             row += 1
 
-    # Yakuniy hisob
     row += 1
     ws2.cell(row=row, column=1, value="Jami kirim").font = Font(bold=True)
     c = ws2.cell(row=row, column=4, value=summary["income_total"])
-    c.number_format = '#,##0'
-    c.font = Font(bold=True, color="006400")
+    c.number_format = '#,##0'; c.font = Font(bold=True, color="006400")
     row += 1
     ws2.cell(row=row, column=1, value="Jami chiqim").font = Font(bold=True)
     c = ws2.cell(row=row, column=4, value=summary["expense_total"])
-    c.number_format = '#,##0'
-    c.font = Font(bold=True, color="8B0000")
+    c.number_format = '#,##0'; c.font = Font(bold=True, color="8B0000")
     row += 1
-    ws2.cell(row=row, column=1, value="Sof natija (foyda/zarar)").font = Font(bold=True, size=12)
+    ws2.cell(row=row, column=1, value="Sof natija").font = Font(bold=True, size=12)
     c = ws2.cell(row=row, column=4, value=summary["net"])
     c.number_format = '#,##0'
     c.font = Font(bold=True, color="006400" if summary["net"] >= 0 else "8B0000")

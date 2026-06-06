@@ -10,9 +10,22 @@ def remove_kb():
     return ReplyKeyboardRemove()
 
 
-def main_menu_kb(is_admin: bool = False, is_boss: bool = False) -> ReplyKeyboardMarkup:
-    # Boss uchun asosiy menyu = faqat Boss bo'limlari (xodim tugmalarisiz,
-    # alohida "Boss panel" tugmasisiz). Boss uchun bu menyu — uy menyusi.
+def main_menu_kb(is_admin: bool = False, is_boss: bool = False,
+                 is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
+    # Bosh Admin uchun: to'g'ridan-to'g'ri Moliya bo'limi + Admin panel
+    if is_bosh_admin:
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
+                [KeyboardButton(text=texts.BTN_ATTENDANCE)],
+                [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
+                [KeyboardButton(text=texts.BTN_TASKS), KeyboardButton(text=texts.BTN_SALARY)],
+                [KeyboardButton(text=texts.BTN_ADMIN)],
+            ],
+            resize_keyboard=True,
+        )
+
+    # Boss uchun asosiy menyu
     if is_boss:
         return ReplyKeyboardMarkup(
             keyboard=[
@@ -373,21 +386,33 @@ def finance_menu_kb() -> ReplyKeyboardMarkup:
 
 
 def finance_categories_kb(entry_type: str) -> InlineKeyboardMarkup:
-    """Turkum tanlash (kirim yoki chiqim uchun bir xil ro'yxat)."""
+    """Turkum tanlash — kirim va chiqim uchun alohida ro'yxatlar."""
+    if entry_type == "income":
+        cats = texts.FINANCE_INCOME_CATEGORIES
+    else:
+        cats = texts.FINANCE_EXPENSE_CATEGORIES
     rows = []
-    pair = []
-    for key, (emoji, name) in texts.FINANCE_CATEGORIES.items():
-        pair.append(InlineKeyboardButton(
+    for key, (emoji, name) in cats.items():
+        rows.append([InlineKeyboardButton(
             text=f"{emoji} {name}",
             callback_data=f"fin_cat:{entry_type}:{key}"
-        ))
-        if len(pair) == 2:
-            rows.append(pair)
-            pair = []
-    if pair:
-        rows.append(pair)
+        )])
     rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL,
                                       callback_data=f"fin_cat:{entry_type}:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def finance_employees_kb(employees) -> InlineKeyboardMarkup:
+    """Avans uchun xodim tanlash klaviaturasi."""
+    rows = []
+    for emp in employees:
+        rows.append([InlineKeyboardButton(
+            text=f"👤 {emp['full_name']}",
+            callback_data=f"fin_emp:{emp['id']}"
+        )])
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="fin_emp:cancel"
+    )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
