@@ -176,6 +176,9 @@ def init_db():
                 "ALTER TABLE employees ADD COLUMN card_holder_name TEXT DEFAULT ''"
             )
 
+    # Lavozimlar tizimini yaratish
+    init_positions()
+
     # Boshlang'ich sozlamalar
     defaults = {
         "office_lat": str(DEFAULT_OFFICE_LAT),
@@ -512,6 +515,15 @@ def get_boss():
             "LIMIT 1"
         ).fetchone()
 
+def get_bosses():
+    """Barcha faol Bosslar ro'yxati (bir nechta bo'lishi mumkin)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE role = 'boss' AND is_active = 1 "
+            "ORDER BY full_name"
+        ).fetchall()
+
+
 
 def get_employees_by_role(role: str):
     """Berilgan roldagi barcha faol xodimlar."""
@@ -581,7 +593,7 @@ def get_today_all_attendance():
             FROM employees e
             LEFT JOIN attendance a ON a.employee_id = e.id
                 AND date(a.timestamp, '+5 hours') = date('now', '+5 hours')
-            WHERE e.is_active = 1
+            WHERE e.is_active = 1 AND e.role != 'boss'
             GROUP BY e.id
             ORDER BY e.full_name
             """
@@ -1044,3 +1056,135 @@ def get_monthly_finance_summary(owner_id: int, year: int, month: int):
         "net": income_total - expense_total,
         "by_category": by_cat,
     }
+
+
+# ===== Lavozimlar tizimi =====
+
+def init_positions():
+    """Positions jadvalini yaratish va default lavozimlarni seed qilish."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                work_hours INTEGER NOT NULL DEFAULT 9,
+                min_rate INTEGER NOT NULL DEFAULT 0,
+                max_rate INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT (datetime('now'))
+            )
+        """)
+        # Migratsiya: employees ga position_id va daily_rate
+        cursor = conn.execute("PRAGMA table_info(employees)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if "position_id" not in cols:
+            conn.execute("ALTER TABLE employees ADD COLUMN position_id INTEGER REFERENCES positions(id)")
+        if "daily_rate" not in cols:
+            conn.execute("ALTER TABLE employees ADD COLUMN daily_rate INTEGER DEFAULT 0")
+
+        # Seed: 3 ta asosiy lavozim
+        defaults = [
+            ("Upakovkachilar",  9, 120000, 150000),
+            ("Grafik dizayner", 9, 150000, 200000),
+            ("Ombor xodimi",   10, 150000, 200000),
+        ]
+        for name, wh, mn, mx in defaults:
+            conn.execute(
+                "INSERT OR IGNORE INTO positions (name, work_hours, min_rate, max_rate) VALUES (?,?,?,?)",
+                (name, wh, mn, mx)
+            )
+
+
+def get_all_positions(active_only=True):
+    with get_db() as conn:
+        if active_only:
+            return conn.execute(
+                "SELECT * FROM positions WHERE is_active=1 ORDER BY name"
+            ).fetchall()
+        return conn.execute("SELECT * FROM positions ORDER BY name").fetchall()
+
+
+def get_position(pos_id: int):
+    with get_db() as conn:
+        return conn.execute("SELECT * FROM positions WHERE id=?", (pos_id,)).fetchone()
+
+
+def create_position(name: str, work_hours: int, min_rate: int, max_rate: int) -> int:
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO positions (name, work_hours, min_rate, max_rate) VALUES (?,?,?,?)",
+            (name, work_hours, min_rate, max_rate)
+        )
+        return cur.lastrowid
+
+
+def update_position(pos_id: int, name: str = None, work_hours: int = None,
+                    min_rate: int = None, max_rate: int = None):
+    sets, params = [], []
+    if name is not None:       sets.append("name=?");       params.append(name)
+    if work_hours is not None: sets.append("work_hours=?"); params.append(work_hours)
+    if min_rate is not None:   sets.append("min_rate=?");   params.append(min_rate)
+    if max_rate is not None:   sets.append("max_rate=?");   params.append(max_rate)
+    if not sets:
+        return
+    params.append(pos_id)
+    with get_db() as conn:
+        conn.execute(f"UPDATE positions SET {','.join(sets)} WHERE id=?", params)
+
+
+def delete_position(pos_id: int):
+    """Lavozimni o'chirish (faqat bog'langan xodim yo'q bo'lsa)."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM positions WHERE id=?", (pos_id,))
+
+
+def set_employee_position(employee_id: int, position_id: int, daily_rate: int):
+    """Xodimga lavozim va kunlik stavka belgilash."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE employees SET position_id=?, daily_rate=? WHERE id=?",
+            (position_id, daily_rate, employee_id)
+        )
+
+
+def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
+    """Kunlik stavka asosida oylik asosiy ish haqqi hisoblash.
+
+    Har ish kuni uchun: min(ishlangan_daqiqa, smena_daqiqa) / smena_daqiqa * kunlik_stavka
+    Agar position/daily_rate yo'q bo'lsa — hourly_rate bilan fallback.
+    """
+    emp = get_employee_by_id(employee_id)
+    if not emp:
+        return 0
+
+    daily_rate = emp["daily_rate"] if "daily_rate" in emp.keys() else 0
+    position_id = emp["position_id"] if "position_id" in emp.keys() else None
+
+    # Fallback: eski hourly_rate tizimi
+    if not daily_rate or not position_id:
+        rate = emp["hourly_rate"] if "hourly_rate" in emp.keys() else 0
+        if not rate:
+            return 0
+        minutes = get_monthly_worked_minutes(employee_id, year, month)
+        return int((minutes / 60.0) * rate)
+
+    pos = get_position(position_id)
+    work_hours = pos["work_hours"] if pos else 9
+    standard_minutes = work_hours * 60
+
+    rows = get_monthly_attendance(employee_id, year, month)
+    total = 0
+    for row in rows:
+        if not row["first_in"] or not row["last_out"]:
+            continue
+        try:
+            ih, im, _ = map(int, row["first_in"].split(":"))
+            oh, om, _ = map(int, row["last_out"].split(":"))
+            worked = (oh * 60 + om) - (ih * 60 + im)
+            if worked <= 0:
+                continue
+            capped = min(worked, standard_minutes)
+            total += int(capped / standard_minutes * daily_rate)
+        except Exception:
+            continue
+    return total

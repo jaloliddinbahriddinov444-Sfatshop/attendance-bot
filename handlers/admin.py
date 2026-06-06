@@ -22,7 +22,7 @@ from database import (
     is_month_closed, close_month, reopen_month,
     get_audit_entries, get_all_employees_salary_summary,
     get_monthly_worked_minutes, get_salary_totals_by_type,
-    create_task, set_role, get_boss,
+    create_task, set_role, get_boss, get_bosses,
     find_employee_by_phone, create_pending_employee,
     update_employee_profile, reactivate_employee, phone_key,
 )
@@ -233,34 +233,6 @@ async def add_emp_confirm(call: CallbackQuery, state: FSMContext):
 
 
 # ===== Xodimlar ro'yxati =====
-
-@router.message(F.text == texts.BTN_ADMIN_LIST)
-async def admin_list(message: Message, bot: Bot):
-    if not _is_admin(message):
-        return
-    employees = get_all_employees(active_only=True)
-    count = len(employees)
-
-    me = await bot.get_me()
-    text = texts.ADMIN_INVITE_LINK.format(
-        bot_username=me.username, count=count, max=MAX_EMPLOYEES
-    )
-    text += "\n\n" + texts.EMPLOYEES_LIST_HEADER.format(count=count, max=MAX_EMPLOYEES)
-
-    if not employees:
-        text += "<i>Xodimlar yo'q</i>"
-    else:
-        for idx, emp in enumerate(employees, 1):
-            text += texts.EMPLOYEE_ITEM.format(
-                idx=idx,
-                admin_icon="👑" if emp["is_admin"] else "👤",
-                name=emp["full_name"],
-                position=emp["position"],
-                phone=emp["phone"]
-            )
-
-    await message.answer(text)
-
 
 # ===== Xodim o'chirish =====
 
@@ -1653,24 +1625,38 @@ async def admin_boss_pick(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    current_boss = get_boss()
-    current_line = (
-        texts.ADMIN_BOSS_CURRENT.format(name=current_boss["full_name"])
-        if current_boss else texts.ADMIN_BOSS_NONE_YET
-    )
+    bosses = get_bosses()
+    if bosses:
+        names = "\n".join(f"  • <b>{b['full_name']}</b>" for b in bosses)
+        current_line = texts.ADMIN_BOSS_CURRENT.format(name=names)
+    else:
+        current_line = texts.ADMIN_BOSS_NONE_YET
 
-    # Adminlar va Bosh Admin'ni ham ro'yxatdan chiqarmaymiz —
-    # kerak bo'lsa adminni Boss qilish mumkin. Faqat o'zini chiqarib qo'yamiz.
+    # Boss bo'lmagan xodimlar (o'zini va bosh_admin'ni chiqarib qo'yamiz)
+    boss_ids = {b["id"] for b in bosses}
     employees = [e for e in get_all_employees(active_only=True)
-                 if e["id"] != me["id"]]
+                 if e["id"] != me["id"] and e["role"] not in ("boss", "bosh_admin")]
     if not employees:
         await message.answer("❌ Tanlash uchun xodim yo'q.",
                              reply_markup=_admin_kb(message))
         return
 
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [[InlineKeyboardButton(
+                text=f"👤 {e['full_name']}",
+                callback_data=f"boss_pick:{e['id']}"
+             )] for e in employees]
+    if bosses:
+        rows.append([InlineKeyboardButton(
+            text=texts.BTN_BOSS_REMOVE,
+            callback_data="boss_remove_list"
+        )])
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="boss_pick:cancel"
+    )])
     await message.answer(
         texts.ADMIN_BOSS_PICK.format(current=current_line),
-        reply_markup=kb.salary_employees_kb(employees, prefix="boss_pick")
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
 
@@ -1735,15 +1721,53 @@ async def admin_boss_set_confirm(call: CallbackQuery, bot: Bot):
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
-    # Eski Bossni xodim qilamiz
-    current_boss = get_boss()
-    if current_boss and current_boss["id"] != emp_id:
-        set_role(current_boss["id"], "employee")
-        await _send_notification(bot, current_boss["telegram_id"],
-                                 texts.BOSS_NOTIFY_REMOVED)
-
-    # Yangi Boss
+    # Yangi Boss qo'shish (eskilarni o'chirmaymiz — multi-boss)
     set_role(emp_id, "boss")
     await call.message.edit_text(texts.ADMIN_BOSS_DONE.format(name=emp["full_name"]))
     await call.answer("✅")
     await _send_notification(bot, emp["telegram_id"], texts.BOSS_NOTIFY_ASSIGNED)
+
+
+@router.callback_query(F.data == "boss_remove_list")
+async def boss_remove_list(call: CallbackQuery):
+    """Bosslar ro'yxatini ko'rsatish — olib tashlash uchun."""
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or me["role"] != "bosh_admin":
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    bosses = get_bosses()
+    if not bosses:
+        await call.answer("Boss yo'q.", show_alert=True)
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [[InlineKeyboardButton(
+                text=f"❌ {b['full_name']}",
+                callback_data=f"boss_remove_confirm:{b['id']}"
+             )] for b in bosses]
+    rows.append([InlineKeyboardButton(
+        text="⬅️ Orqaga", callback_data="boss_remove:no"
+    )])
+    await call.message.edit_text(
+        texts.ADMIN_BOSS_REMOVE_LIST,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("boss_remove_confirm:"))
+async def boss_remove_confirm(call: CallbackQuery, bot: Bot):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or me["role"] != "bosh_admin":
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    emp_id = int(call.data.split(":")[1])
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("Topilmadi", show_alert=True)
+        return
+    set_role(emp_id, "employee")
+    await call.message.edit_text(
+        texts.ADMIN_BOSS_REMOVED_NAME.format(name=emp["full_name"])
+    )
+    await call.answer("✅")
+    await _send_notification(bot, emp["telegram_id"], texts.BOSS_NOTIFY_REMOVED)

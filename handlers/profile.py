@@ -14,6 +14,7 @@ from database import (
     get_employee_by_telegram_id, get_monthly_attendance, get_office_config,
     get_monthly_worked_minutes, get_salary_totals_by_type,
     get_active_salary_entries, update_employee_card,
+    get_position, get_monthly_base_salary,
 )
 
 logger = logging.getLogger(__name__)
@@ -199,54 +200,60 @@ async def show_stats(message: Message):
 
 @router.message(F.text == texts.BTN_SALARY)
 async def show_salary(message: Message):
-    """Xodim — joriy oy ish haqqi xulosasi"""
+    """Xodim — joriy oy ish haqqi xulosasi (kunlik yoki soatbay stavka)"""
     employee = get_employee_by_telegram_id(message.from_user.id)
     if not employee:
         await message.answer(texts.NOT_REGISTERED)
         return
 
-    rate = employee["hourly_rate"] if "hourly_rate" in employee.keys() else 0
-    if not rate or rate == 0:
+    now = tz_now()
+    year, month = now.year, now.month
+
+    daily_rate = employee["daily_rate"] if "daily_rate" in employee.keys() else 0
+    position_id = employee["position_id"] if "position_id" in employee.keys() else None
+    hourly_rate = employee["hourly_rate"] if "hourly_rate" in employee.keys() else 0
+
+    # Asosiy ish haqqini hisoblash
+    base = get_monthly_base_salary(employee["id"], year, month)
+
+    if not base and not daily_rate and not hourly_rate:
         await message.answer(
             texts.SALARY_NO_RATE,
             reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
         )
         return
 
-    now = tz_now()
-    year, month = now.year, now.month
-
-    # Ishlangan daqiqalar
-    minutes = get_monthly_worked_minutes(employee["id"], year, month)
-    hours = minutes // 60
-    mins = minutes % 60
-
-    # Asosiy ish haqqi (soatbay)
-    base = int((minutes / 60.0) * rate)
-
-    # Kategoriyalar bo'yicha
     totals = get_salary_totals_by_type(employee["id"], year, month)
+    total = (base - totals["avans"] - totals["jarima"]
+             + totals["mukofot"] + totals["bonus"] - totals["mahsulot"])
 
-    # Jami hisoblash: +ish haqqi −avans −jarima +mukofot +bonus −mahsulot
-    total = (base
-             - totals["avans"]
-             - totals["jarima"]
-             + totals["mukofot"]
-             + totals["bonus"]
-             - totals["mahsulot"])
-
-    summary = texts.SALARY_HEADER.format(
-        month=texts.MONTHS_UZ[month], year=year,
-        hours=hours, minutes=mins,
-        rate=rate,
-        base=base,
-        avans=totals["avans"],
-        jarima=totals["jarima"],
-        mukofot=totals["mukofot"],
-        bonus=totals["bonus"],
-        mahsulot=totals["mahsulot"],
-        total=total,
-    )
+    # Yangi kunlik stavka tizimi
+    if daily_rate and position_id:
+        pos = get_position(position_id)
+        records = get_monthly_attendance(employee["id"], year, month)
+        days_worked = sum(1 for r in records if r["first_in"] and r["last_out"])
+        summary = texts.SALARY_HEADER_DAILY.format(
+            month=texts.MONTHS_UZ[month], year=year,
+            position=pos["name"] if pos else employee["position"],
+            work_hours=pos["work_hours"] if pos else 9,
+            daily_rate=daily_rate,
+            days=days_worked,
+            base=base,
+            avans=totals["avans"], jarima=totals["jarima"],
+            mukofot=totals["mukofot"], bonus=totals["bonus"],
+            mahsulot=totals["mahsulot"], total=total,
+        )
+    else:
+        # Eski soatbay tizim
+        minutes = get_monthly_worked_minutes(employee["id"], year, month)
+        summary = texts.SALARY_HEADER.format(
+            month=texts.MONTHS_UZ[month], year=year,
+            hours=minutes // 60, minutes=minutes % 60,
+            rate=hourly_rate, base=base,
+            avans=totals["avans"], jarima=totals["jarima"],
+            mukofot=totals["mukofot"], bonus=totals["bonus"],
+            mahsulot=totals["mahsulot"], total=total,
+        )
 
     # Yozuvlar tafsiloti (sabab bilan)
     entries = get_active_salary_entries(employee["id"], year, month)
