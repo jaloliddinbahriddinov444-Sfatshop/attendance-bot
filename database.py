@@ -1067,7 +1067,7 @@ def init_positions():
             CREATE TABLE IF NOT EXISTS positions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
-                work_hours INTEGER NOT NULL DEFAULT 9,
+                work_hours REAL NOT NULL DEFAULT 9,
                 min_rate INTEGER NOT NULL DEFAULT 0,
                 max_rate INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
@@ -1086,13 +1086,14 @@ def init_positions():
         defaults = [
             ("Upakovkachilar",  9, 120000, 150000),
             ("Grafik dizayner", 9, 150000, 200000),
-            ("Ombor xodimi",   10, 150000, 200000),
+            ("Ombor xodimi",   9.5, 150000, 200000),
         ]
         for name, wh, mn, mx in defaults:
             conn.execute(
                 "INSERT OR IGNORE INTO positions (name, work_hours, min_rate, max_rate) VALUES (?,?,?,?)",
                 (name, wh, mn, mx)
             )
+        conn.execute("UPDATE positions SET work_hours=9.5 WHERE name='Ombor xodimi'")
 
 
 def get_all_positions(active_only=True):
@@ -1183,8 +1184,7 @@ def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
             worked = (oh * 60 + om) - (ih * 60 + im)
             if worked <= 0:
                 continue
-            capped = min(worked, standard_minutes)
-            total += int(capped / standard_minutes * daily_rate)
+            total += int(worked / standard_minutes * daily_rate)
         except Exception:
             continue
     return total
