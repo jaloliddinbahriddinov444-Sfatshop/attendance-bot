@@ -591,7 +591,7 @@ def get_today_all_attendance():
             FROM employees e
             LEFT JOIN attendance a ON a.employee_id = e.id
                 AND date(a.timestamp, '+5 hours') = date('now', '+5 hours')
-            WHERE e.is_active = 1 AND e.role NOT IN ('boss', 'bosh_admin')
+            WHERE e.is_active = 1 AND e.role != 'boss'
             GROUP BY e.id
             ORDER BY e.full_name
             """
