@@ -794,6 +794,10 @@ ADMIN_BOSS_REMOVE_PROMPT = (
     "O'chirilsa, oddiy xodim bo'ladi. Davom etamizmi?"
 )
 ADMIN_BOSS_REMOVED = "✅ Boss roli o'chirildi."
+BTN_BOSS_REMOVE = "❌ Bossdan olib tashlash"
+ADMIN_BOSS_REMOVE_LIST = "❌ <b>Bossdan olib tashlash</b>\n\nQaysi Bossni olib tashlaymiz?"
+ADMIN_BOSS_REMOVED_NAME = "✅ <b>{name}</b> Boss rolidан olib tashlandi — endi oddiy xodim."
+
 ADMIN_BOSS_ONLY_BOSH = "❌ Faqat Bosh Admin Boss tayinlay oladi."
 BOSS_NOTIFY_ASSIGNED = (
     "🏆 <b>Tabriklaymiz!</b>\n\n"
