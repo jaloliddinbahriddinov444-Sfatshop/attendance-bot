@@ -158,8 +158,7 @@ def grp_finance_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=texts.BTN_ADMIN_RATES),
              KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
-            [KeyboardButton(text=texts.BTN_BOSS_FINANCE),
-             KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
+            [KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
         ],
         resize_keyboard=True,
