@@ -199,6 +199,13 @@ def init_db():
                 "CREATE INDEX IF NOT EXISTS idx_finance_owner_date "
                 "ON finance_entries(owner_id, entry_date)"
             )
+        else:
+            # Migratsiya: linked_employee_id ustuni yo'q bo'lsa qo'shish
+            fe_cols = [row[1] for row in conn.execute("PRAGMA table_info(finance_entries)").fetchall()]
+            if "linked_employee_id" not in fe_cols:
+                conn.execute(
+                    "ALTER TABLE finance_entries ADD COLUMN linked_employee_id INTEGER"
+                )
 
     # Lavozimlar tizimini yaratish
     init_positions()
