@@ -96,8 +96,8 @@ async def pos_name(message: Message, state: FSMContext):
 @router.message(PositionManage.waiting_work_hours, F.text)
 async def pos_hours(message: Message, state: FSMContext):
     try:
-        hours = int(message.text.strip())
-        assert 1 <= hours <= 24
+        hours = float(message.text.strip().replace(",", "."))
+        assert 0.5 <= hours <= 24.0
     except Exception:
         await message.answer(texts.POS_HOURS_INVALID)
         return

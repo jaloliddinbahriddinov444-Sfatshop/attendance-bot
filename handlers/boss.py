@@ -43,7 +43,7 @@ async def boss_attendance(message: Message):
         await message.answer(texts.NO_PERMISSION)
         return
 
-    employees = get_all_employees(active_only=True)
+    employees = [e for e in get_all_employees(active_only=True) if e["role"] != "boss"]
     if not employees:
         await message.answer(texts.BOSS_ATTENDANCE_EMPTY)
         return
