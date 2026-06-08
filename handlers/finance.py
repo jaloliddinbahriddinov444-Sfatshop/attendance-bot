@@ -263,6 +263,7 @@ async def finance_note_handler(message: Message, state: FSMContext):
             category=data["fin_cat_key"],
             amount=int(data["fin_amount"]),
             note=note,
+            linked_employee_id=data.get("fin_linked_emp_id"),
         )
         logger.info("Finance entry %s yaratildi: owner=%s, %s %s",
                     entry_id, data["fin_owner"], data["fin_type"], data["fin_amount"])
@@ -290,7 +291,9 @@ async def finance_note_handler(message: Message, state: FSMContext):
     except Exception as exc:
         logger.exception("Finance note handler xato: %s", exc)
         await message.answer(
-            "Saqlashda xato yuz berdi. Qayta urinib koring.",
+            f"Saqlashda xato yuz berdi.\n\n"
+            f"<code>{type(exc).__name__}: {exc}</code>\n\n"
+            f"Qayta urinib koring.",
             reply_markup=kb.finance_menu_kb()
         )
 

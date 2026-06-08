@@ -10,7 +10,7 @@ from config import DB_PATH, DEFAULT_OFFICE_LAT, DEFAULT_OFFICE_LON, \
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -174,6 +174,30 @@ def init_db():
         if "card_holder_name" not in columns:
             conn.execute(
                 "ALTER TABLE employees ADD COLUMN card_holder_name TEXT DEFAULT ''"
+            )
+
+        # Migratsiya: finance_entries jadvali yo'q bo'lsa yaratish (belt-and-suspenders)
+        exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='finance_entries'"
+        ).fetchone()
+        if not exists:
+            conn.execute("""
+                CREATE TABLE finance_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_id INTEGER NOT NULL,
+                    entry_type TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    note TEXT,
+                    linked_employee_id INTEGER,
+                    entry_date TIMESTAMP DEFAULT (datetime('now')),
+                    FOREIGN KEY (owner_id) REFERENCES employees (id) ON DELETE CASCADE,
+                    FOREIGN KEY (linked_employee_id) REFERENCES employees (id) ON DELETE SET NULL
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_finance_owner_date "
+                "ON finance_entries(owner_id, entry_date)"
             )
 
     # Lavozimlar tizimini yaratish
