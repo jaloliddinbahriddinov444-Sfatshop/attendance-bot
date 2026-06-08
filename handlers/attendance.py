@@ -104,6 +104,24 @@ async def start_attendance(message: Message, state: FSMContext):
     await state.set_state(Attendance.waiting_wifi_confirm)
 
 
+
+
+@router.message(Attendance.waiting_wifi_confirm, F.text.in_({texts.BTN_CANCEL, texts.BTN_BACK}))
+async def cancel_attendance_flow(message: Message, state: FSMContext):
+    await state.clear()
+    employee = get_employee_by_telegram_id(message.from_user.id)
+    if not employee:
+        await message.answer(texts.NOT_REGISTERED)
+        return
+    today = get_today_attendance(employee["id"])
+    last = today[-1] if today else None
+    can_check_in = last is None
+    can_check_out = last is not None and last["check_type"] == "in"
+    await message.answer(
+        texts.ATTENDANCE_MENU.format(status=_today_status(today)),
+        reply_markup=kb.attendance_menu_kb(can_check_in, can_check_out)
+    )
+
 @router.message(Attendance.waiting_wifi_confirm, F.text == texts.BTN_WIFI_CONFIRMED)
 async def check_verified(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -163,13 +181,13 @@ async def check_verified(message: Message, state: FSMContext):
                 face_score=token_data["face_score"],
                 late_warning=late_warning,
             ),
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+            reply_markup=kb.attendance_menu_kb(False, True)
         )
     else:
         worked_str = _calculate_worked_time(employee["id"])
         await message.answer(
             texts.CHECK_OUT_SUCCESS.format(time=time_str, worked=worked_str),
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+            reply_markup=kb.attendance_menu_kb(False, False)
         )
         # Phase 2: ochiq vazifalar bo'lsa, "Hammasini tugatdingizmi?" savolini chiqarish
         from handlers.tasks import maybe_prompt_checkout_tasks
