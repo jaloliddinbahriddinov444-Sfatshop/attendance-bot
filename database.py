@@ -1184,7 +1184,8 @@ def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
             worked = (oh * 60 + om) - (ih * 60 + im)
             if worked <= 0:
                 continue
-            total += int(worked / standard_minutes * daily_rate)
+            capped = min(worked, 12 * 60)
+            total += int(capped / standard_minutes * daily_rate)
         except Exception:
             continue
     return total

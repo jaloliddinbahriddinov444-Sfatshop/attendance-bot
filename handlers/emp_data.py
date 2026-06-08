@@ -86,6 +86,14 @@ def _build_full_profile(emp_id: int) -> str:
         month=texts.MONTHS_UZ[month], year=year
     )
     total_minutes = 0
+    for _r in records:
+        if _r["first_in"] and _r["last_out"]:
+            try:
+                _ih,_im,_=map(int,_r["first_in"].split(":"))
+                _oh,_om,_=map(int,_r["last_out"].split(":"))
+                _m=(_oh*60+_om)-(_ih*60+_im)
+                if _m>0: total_minutes+=_m
+            except Exception: pass
     days_shown = 0
     if records:
         for rec in records[-15:]:  # Oxirgi 15 kun
@@ -108,7 +116,6 @@ def _build_full_profile(emp_id: int) -> str:
                     oh, om, _ = map(int, lo.split(":"))
                     mins = (oh * 60 + om) - (ih * 60 + im)
                     if mins > 0:
-                        total_minutes += mins
                         worked_str = f"{mins//60}s {mins%60}d"
                     else:
                         worked_str = "—"
