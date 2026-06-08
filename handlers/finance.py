@@ -244,57 +244,55 @@ async def finance_amount_handler(message: Message, state: FSMContext):
 
 @router.message(FinanceEntry.entering_note, F.text)
 async def finance_note_handler(message: Message, state: FSMContext):
-    me = get_employee_by_telegram_id(message.from_user.id)
-
-    if message.text == texts.BTN_CANCEL:
+    from html import escape as _esc
+    if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
         await message.answer(texts.CANCELLED, reply_markup=kb.finance_menu_kb())
         return
-
     note = None
     if message.text != texts.BTN_FINANCE_NOTE_SKIP:
-        note = message.text.strip()
-        if len(note) > 500:
-            note = note[:500]
-
+        stripped = message.text.strip()
+        if stripped:
+            note = stripped[:500] if len(stripped) > 500 else stripped
     data = await state.get_data()
-    linked_emp_id = data.get("fin_linked_emp_id")
-
-    entry_id = create_finance_entry(
-        owner_id=data["fin_owner"],
-        entry_type=data["fin_type"],
-        category=data["fin_cat_key"],
-        amount=data["fin_amount"],
-        note=note,
-        linked_employee_id=linked_emp_id,
-    )
-    logger.info("Finance entry %s: owner=%s %s %s",
-                entry_id, data["fin_owner"], data["fin_type"], data["fin_amount"])
-
-    type_emoji = "➕" if data["fin_type"] == "income" else "➖"
-    type_name = "Kirim" if data["fin_type"] == "income" else "Chiqim"
-    note_line = texts.FINANCE_NOTE_FRAGMENT.format(note=note) if note else ""
-    emp_line = ""
-    if linked_emp_id and data.get("fin_linked_emp_name"):
-        emp_line = texts.FINANCE_EMP_FRAGMENT.format(name=data["fin_linked_emp_name"])
-
-    await message.answer(
-        texts.FINANCE_SAVED.format(
-            type_emoji=type_emoji,
-            type_name=type_name,
-            cat_emoji=data["fin_cat_emoji"],
-            category=data["fin_cat_name"],
-            amount=data["fin_amount"],
-            when=tz_now().strftime("%d.%m.%Y %H:%M"),
-            note_line=note_line,
-            emp_line=emp_line,
-        ),
-        reply_markup=kb.finance_menu_kb()
-    )
     await state.clear()
-
-
-# ===== Bu oylik xulosa =====
+    try:
+        entry_id = create_finance_entry(
+            owner_id=data["fin_owner"],
+            entry_type=data["fin_type"],
+            category=data["fin_cat_key"],
+            amount=data["fin_amount"],
+            note=note,
+        )
+        logger.info("Finance entry %s yaratildi: owner=%s, %s %s",
+                    entry_id, data["fin_owner"], data["fin_type"], data["fin_amount"])
+        type_emoji = "➕" if data["fin_type"] == "income" else "➖"
+        type_name = "Kirim" if data["fin_type"] == "income" else "Chiqim"
+        note_line = texts.FINANCE_NOTE_FRAGMENT.format(note=_esc(note)) if note else ""
+        await message.answer(
+            texts.FINANCE_SAVED.format(
+                type_emoji=type_emoji,
+                type_name=type_name,
+                cat_emoji=data["fin_cat_emoji"],
+                category=data["fin_cat_name"],
+                amount=data["fin_amount"],
+                when=tz_now().strftime("%d.%m.%Y %H:%M"),
+                note_line=note_line,
+            ),
+            reply_markup=kb.finance_menu_kb()
+        )
+    except KeyError as exc:
+        logger.exception("Finance note: state malumotlari yoq -- %s", exc)
+        await message.answer(
+            "Texnik xato: holat malumotlari yoqoldi. Moliya bolimiga qayta kiring.",
+            reply_markup=kb.finance_menu_kb()
+        )
+    except Exception as exc:
+        logger.exception("Finance note handler xato: %s", exc)
+        await message.answer(
+            "Saqlashda xato yuz berdi. Qayta urinib koring.",
+            reply_markup=kb.finance_menu_kb()
+        )
 
 @router.message(F.text == texts.BTN_FINANCE_SUMMARY)
 async def finance_summary(message: Message):

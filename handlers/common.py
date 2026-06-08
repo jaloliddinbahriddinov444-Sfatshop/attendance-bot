@@ -68,9 +68,19 @@ async def go_back(message: Message, state: FSMContext):
 
 
 @router.message(F.text)
-async def unknown_text(message: Message):
+async def unknown_text(message: Message, state: FSMContext):
+    current = await state.get_state()
+    if current:
+        await message.answer(
+            "Iltimos, tugmalardan foydalaning yoki Bekor qilish ni bosing."
+        )
+        return
     employee = get_employee_by_telegram_id(message.from_user.id)
     if not employee:
         await message.answer(texts.NOT_REGISTERED)
         return
-    await message.answer(texts.UNKNOWN_COMMAND, reply_markup=_main_kb(employee))
+    await message.answer(
+        texts.UNKNOWN_COMMAND,
+        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+    )
+
