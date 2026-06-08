@@ -401,7 +401,7 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
         ws.cell(row=i, column=3, value=f"{cat_info[0]} {cat_info[1]}")
         # Xodim (avans uchun)
         emp_name = ""
-        if e.get("linked_employee_id"):
+        if dict(e).get("linked_employee_id"):
             emp = get_employee_by_id(e["linked_employee_id"])
             emp_name = emp["full_name"] if emp else ""
         ws.cell(row=i, column=4, value=emp_name)
