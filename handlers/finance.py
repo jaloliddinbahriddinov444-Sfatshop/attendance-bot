@@ -261,7 +261,7 @@ async def finance_note_handler(message: Message, state: FSMContext):
             owner_id=data["fin_owner"],
             entry_type=data["fin_type"],
             category=data["fin_cat_key"],
-            amount=data["fin_amount"],
+            amount=int(data["fin_amount"]),
             note=note,
         )
         logger.info("Finance entry %s yaratildi: owner=%s, %s %s",
@@ -275,7 +275,7 @@ async def finance_note_handler(message: Message, state: FSMContext):
                 type_name=type_name,
                 cat_emoji=data["fin_cat_emoji"],
                 category=data["fin_cat_name"],
-                amount=data["fin_amount"],
+                amount=int(data["fin_amount"]),
                 when=tz_now().strftime("%d.%m.%Y %H:%M"),
                 note_line=note_line,
             ),
