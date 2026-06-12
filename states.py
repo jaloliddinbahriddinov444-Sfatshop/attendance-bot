@@ -62,6 +62,12 @@ class FinanceEntry(StatesGroup):
     selecting_employee = State()   # Avans uchun xodim tanlash (YANGI)
     entering_amount = State()
     entering_note = State()
+    entering_date = State()        # Sana tanlash: bugun yoki qo'lda
+
+
+class FinanceDelete(StatesGroup):
+    """Moliya yozuvini sana orqali o'chirish."""
+    entering_date = State()
 
 
 class PositionManage(StatesGroup):

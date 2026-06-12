@@ -8,7 +8,7 @@ Yangi oqim:
 import io
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
@@ -16,7 +16,7 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile
 
 import texts
 import keyboards as kb
-from states import FinanceEntry
+from states import FinanceEntry, FinanceDelete
 from database import (
     get_employee_by_telegram_id,
     get_all_employees,
@@ -26,6 +26,11 @@ from database import (
     get_monthly_finance_summary,
     add_salary_entry,
     is_month_closed,
+    get_finance_entry,
+    get_finance_entries_by_date,
+    delete_finance_entry,
+    get_finance_balance,
+    get_finance_balance_before,
 )
 from tzutil import now as tz_now, fmt as fmt_local
 
@@ -112,6 +117,24 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
     if cat_key == "cancel":
         await state.clear()
         await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    # Shaxsiy xarajatlar — ichki turkumlar menyusi
+    if cat_key == "personal" and entry_type == "expense":
+        await call.message.edit_text(
+            texts.FINANCE_PICK_PERSONAL,
+            reply_markup=kb.finance_personal_cats_kb()
+        )
+        await call.answer()
+        return
+
+    # Shaxsiy menyudan ortga — chiqim turkumlariga qaytish
+    if cat_key == "backexp":
+        await call.message.edit_text(
+            texts.FINANCE_PICK_CATEGORY_EXPENSE,
+            reply_markup=kb.finance_categories_kb("expense")
+        )
         await call.answer()
         return
 
@@ -249,11 +272,10 @@ async def finance_amount_handler(message: Message, state: FSMContext):
     await state.set_state(FinanceEntry.entering_note)
 
 
-# ===== Izoh va saqlash =====
+# ===== Izoh → Sana → Saqlash =====
 
 @router.message(FinanceEntry.entering_note, F.text)
-async def finance_note_handler(message: Message, state: FSMContext, bot: Bot):
-    from html import escape as _esc
+async def finance_note_handler(message: Message, state: FSMContext):
     if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
         await message.answer(texts.CANCELLED, reply_markup=kb.finance_menu_kb())
@@ -263,7 +285,60 @@ async def finance_note_handler(message: Message, state: FSMContext, bot: Bot):
         stripped = message.text.strip()
         if stripped:
             note = stripped[:500] if len(stripped) > 500 else stripped
+    await state.update_data(fin_note=note)
+    await message.answer(texts.FINANCE_ASK_DATE, reply_markup=kb.finance_date_kb())
+    await state.set_state(FinanceEntry.entering_date)
+
+
+def _parse_user_date(text: str):
+    """KK.OO.YYYY → datetime.date yoki None."""
+    cleaned = text.strip().replace("/", ".").replace("-", ".")
+    for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+@router.message(FinanceEntry.entering_date, F.text)
+async def finance_date_handler(message: Message, state: FSMContext, bot: Bot):
+    from html import escape as _esc
+    if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
+        await state.clear()
+        await message.answer(texts.CANCELLED, reply_markup=kb.finance_menu_kb())
+        return
+
+    entry_date_utc = None  # None — hozirgi vaqt
+    if message.text == texts.BTN_FINANCE_TODAY:
+        chosen = tz_now()
+        when_str = chosen.strftime("%d.%m.%Y %H:%M")
+    else:
+        d = _parse_user_date(message.text)
+        if not d:
+            await message.answer(texts.FINANCE_DATE_INVALID,
+                                 reply_markup=kb.finance_date_kb())
+            return
+        # Mahalliy (Toshkent) 12:00 → UTC = −5 soat
+        chosen = datetime(d.year, d.month, d.day, 12, 0, 0)
+        entry_date_utc = (chosen - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+        when_str = chosen.strftime("%d.%m.%Y")
+
     data = await state.get_data()
+
+    # Avans: tanlangan oy yopiq bo'lsa — bloklash
+    if data.get("fin_cat_key") == "advance" and data.get("fin_linked_emp_id"):
+        if is_month_closed(chosen.year, chosen.month):
+            await state.clear()
+            await message.answer(
+                texts.FINANCE_ADVANCE_MONTH_CLOSED.format(
+                    month=texts.MONTHS_UZ[chosen.month], year=chosen.year
+                ),
+                reply_markup=kb.finance_menu_kb()
+            )
+            return
+
+    note = data.get("fin_note")
     await state.clear()
     try:
         entry_id = create_finance_entry(
@@ -273,6 +348,7 @@ async def finance_note_handler(message: Message, state: FSMContext, bot: Bot):
             amount=int(data["fin_amount"]),
             note=note,
             linked_employee_id=data.get("fin_linked_emp_id"),
+            entry_date_utc=entry_date_utc,
         )
         logger.info("Finance entry %s yaratildi: owner=%s, %s %s",
                     entry_id, data["fin_owner"], data["fin_type"], data["fin_amount"])
@@ -319,25 +395,142 @@ async def finance_note_handler(message: Message, state: FSMContext, bot: Bot):
                 cat_emoji=data["fin_cat_emoji"],
                 category=data["fin_cat_name"],
                 amount=int(data["fin_amount"]),
-                when=tz_now().strftime("%d.%m.%Y %H:%M"),
+                when=when_str,
                 note_line=note_line,
             ) + salary_note_line,
             reply_markup=kb.finance_menu_kb()
         )
     except KeyError as exc:
-        logger.exception("Finance note: state malumotlari yoq -- %s", exc)
+        logger.exception("Finance date: state malumotlari yoq -- %s", exc)
         await message.answer(
             "Texnik xato: holat malumotlari yoqoldi. Moliya bolimiga qayta kiring.",
             reply_markup=kb.finance_menu_kb()
         )
     except Exception as exc:
-        logger.exception("Finance note handler xato: %s", exc)
+        logger.exception("Finance saqlash xato: %s", exc)
         await message.answer(
             f"Saqlashda xato yuz berdi.\n\n"
             f"<code>{type(exc).__name__}: {_esc(str(exc))}</code>\n\n"
             f"Qayta urinib koring.",
             reply_markup=kb.finance_menu_kb()
         )
+
+
+# ===== Yozuvni o'chirish (sana orqali) =====
+
+@router.message(F.text == texts.BTN_FINANCE_DELETE)
+async def finance_delete_start(message: Message, state: FSMContext):
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _can_use_finance(me):
+        await message.answer(texts.FINANCE_NO_PERMISSION)
+        return
+    await state.clear()
+    await message.answer(texts.FINANCE_DELETE_ASK_DATE,
+                         reply_markup=kb.finance_date_kb())
+    await state.set_state(FinanceDelete.entering_date)
+
+
+@router.message(FinanceDelete.entering_date, F.text)
+async def finance_delete_date_handler(message: Message, state: FSMContext):
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _can_use_finance(me):
+        await state.clear()
+        await message.answer(texts.FINANCE_NO_PERMISSION)
+        return
+    if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
+        await state.clear()
+        await message.answer(texts.CANCELLED, reply_markup=kb.finance_menu_kb())
+        return
+
+    if message.text == texts.BTN_FINANCE_TODAY:
+        d = tz_now().date()
+    else:
+        d = _parse_user_date(message.text)
+        if not d:
+            await message.answer(texts.FINANCE_DATE_INVALID,
+                                 reply_markup=kb.finance_date_kb())
+            return
+
+    date_str = d.strftime("%Y-%m-%d")
+    label = d.strftime("%d.%m.%Y")
+    entries = get_finance_entries_by_date(me["id"], date_str)
+    if not entries:
+        await message.answer(texts.FINANCE_DELETE_EMPTY.format(date=label),
+                             reply_markup=kb.finance_date_kb())
+        return
+
+    await state.clear()
+    await message.answer(
+        texts.FINANCE_DELETE_PICK.format(date=label),
+        reply_markup=kb.finance_del_entries_kb(entries)
+    )
+    await message.answer("👇 Yuqoridan yozuvni tanlang yoki Bekor qiling.",
+                         reply_markup=kb.finance_menu_kb())
+
+
+@router.callback_query(F.data.startswith("fin_del:"))
+async def finance_delete_pick(call: CallbackQuery):
+    from html import escape as _esc
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
+        return
+    arg = call.data.split(":", 1)[1]
+    if arg == "cancel":
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    entry = get_finance_entry(int(arg), me["id"])
+    if not entry:
+        await call.answer("Yozuv topilmadi", show_alert=True)
+        return
+    cat_info = texts.FINANCE_CATEGORIES.get(entry["category"], ("📋", entry["category"]))
+    note_line = (texts.FINANCE_NOTE_FRAGMENT.format(note=_esc(entry["note"]))
+                 if entry["note"] else "")
+    advance_warn = (texts.FINANCE_DELETE_ADVANCE_WARN
+                    if entry["category"] == "advance" else "")
+    await call.message.edit_text(
+        texts.FINANCE_DELETE_CONFIRM.format(
+            type_emoji="➕" if entry["entry_type"] == "income" else "➖",
+            type_name="Kirim" if entry["entry_type"] == "income" else "Chiqim",
+            cat_emoji=cat_info[0],
+            category=cat_info[1],
+            amount=entry["amount"],
+            when=fmt_local(entry["entry_date"], "%d.%m.%Y %H:%M"),
+            note_line=note_line,
+            advance_warn=advance_warn,
+        ),
+        reply_markup=kb.finance_del_confirm_kb(entry["id"])
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("fin_delc:"))
+async def finance_delete_confirm(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
+        return
+    entry_id = int(call.data.split(":", 1)[1])
+    entry = get_finance_entry(entry_id, me["id"])
+    if not entry:
+        await call.answer("Yozuv topilmadi", show_alert=True)
+        return
+    ok = delete_finance_entry(entry_id, me["id"])
+    if not ok:
+        await call.answer("O'chirib bo'lmadi", show_alert=True)
+        return
+    cat_info = texts.FINANCE_CATEGORIES.get(entry["category"], ("📋", entry["category"]))
+    logger.info("Finance entry %s o'chirildi (owner=%s)", entry_id, me["id"])
+    await call.message.edit_text(
+        texts.FINANCE_DELETED.format(
+            type_emoji="➕" if entry["entry_type"] == "income" else "➖",
+            amount=entry["amount"],
+            category=cat_info[1],
+        )
+    )
+    await call.answer("O'chirildi")
+
 
 @router.message(F.text == texts.BTN_FINANCE_SUMMARY)
 async def finance_summary(message: Message):
@@ -354,6 +547,7 @@ async def finance_summary(message: Message):
 
     if not summary["by_category"]["income"] and not summary["by_category"]["expense"]:
         out += texts.FINANCE_SUMMARY_EMPTY
+        out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
         await message.answer(out)
         return
 
@@ -383,6 +577,7 @@ async def finance_summary(message: Message):
     else:
         out += texts.FINANCE_SUMMARY_NET_ZERO
 
+    out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
     await message.answer(out)
 
 
@@ -402,8 +597,10 @@ async def finance_excel(message: Message):
         return
 
     summary = get_monthly_finance_summary(me["id"], now.year, now.month)
+    opening = get_finance_balance_before(me["id"], now.year, now.month)
     file_bytes = await asyncio.to_thread(
-        _build_finance_excel, entries, summary, now.year, now.month, me["full_name"]
+        _build_finance_excel, entries, summary, now.year, now.month,
+        me["full_name"], opening
     )
     filename = f"moliya_{now.year}_{now.month:02d}_{me['full_name'].split()[0]}.xlsx"
     await message.answer_document(
@@ -412,7 +609,8 @@ async def finance_excel(message: Message):
     )
 
 
-def _build_finance_excel(entries, summary, year: int, month: int, owner_name: str) -> bytes:
+def _build_finance_excel(entries, summary, year: int, month: int,
+                         owner_name: str, opening: int = 0) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -425,10 +623,11 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
     title.font = Font(bold=True, size=14, color="FFFFFF")
     title.fill = PatternFill(start_color="2E5C8A", end_color="2E5C8A", fill_type="solid")
     title.alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
     ws.row_dimensions[1].height = 22
 
-    headers = ["Sana", "Tur", "Turkum", "Xodim (avans)", "Summa (so'm)", "Izoh"]
+    headers = ["Sana", "Vaqt", "Kategoriya", "Izoh",
+               "Rasxod (so'm)", "Kirim (so'm)", "Qoldiq (so'm)"]
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     thin = Side(border_style="thin", color="808080")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -439,33 +638,73 @@ def _build_finance_excel(entries, summary, year: int, month: int, owner_name: st
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = border
 
-    for i, e in enumerate(entries, start=4):
+    # Boshlang'ich qoldiq qatori (oldingi oydan)
+    pm = month - 1 if month > 1 else 12
+    open_row = 4
+    open_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+    ws.cell(row=open_row, column=3,
+            value=f"📦 {texts.MONTHS_UZ[pm]} oyidan qolgan qoldiq")
+    oc = ws.cell(row=open_row, column=7, value=opening)
+    oc.number_format = '#,##0'
+    oc.font = Font(bold=True)
+    for c in range(1, 8):
+        cell = ws.cell(row=open_row, column=c)
+        cell.border = border
+        cell.fill = open_fill
+
+    # Yozuvlar: har qator o'z qoldig'i bilan (formula: oldingi + kirim − rasxod)
+    start = open_row + 1
+    for idx, e in enumerate(entries):
+        i = start + idx
         cat_info = texts.FINANCE_CATEGORIES.get(e["category"], ("📋", e["category"]))
-        ws.cell(row=i, column=1, value=fmt_local(e["entry_date"], "%d.%m.%Y %H:%M"))
-        ws.cell(row=i, column=2, value="Kirim" if e["entry_type"] == "income" else "Chiqim")
+        ws.cell(row=i, column=1, value=fmt_local(e["entry_date"], "%d.%m.%Y"))
+        ws.cell(row=i, column=2, value=fmt_local(e["entry_date"], "%H:%M"))
         ws.cell(row=i, column=3, value=f"{cat_info[0]} {cat_info[1]}")
-        # Xodim (avans uchun)
-        emp_name = ""
+        # Izoh (avans bo'lsa xodim nomi bilan)
+        note = e["note"] or ""
         if dict(e).get("linked_employee_id"):
             emp = get_employee_by_id(e["linked_employee_id"])
-            emp_name = emp["full_name"] if emp else ""
-        ws.cell(row=i, column=4, value=emp_name)
-        amount_cell = ws.cell(row=i, column=5, value=e["amount"])
-        amount_cell.number_format = '#,##0'
-        if e["entry_type"] == "income":
-            amount_cell.font = Font(color="006400")
+            if emp:
+                note = f"Avans: {emp['full_name']}" + (f" — {note}" if note else "")
+        ws.cell(row=i, column=4, value=note)
+        if e["entry_type"] == "expense":
+            ac = ws.cell(row=i, column=5, value=e["amount"])
+            ac.number_format = '#,##0'
+            ac.font = Font(color="8B0000")
         else:
-            amount_cell.font = Font(color="8B0000")
-        ws.cell(row=i, column=6, value=e["note"] or "")
-        for c in range(1, 7):
+            ac = ws.cell(row=i, column=6, value=e["amount"])
+            ac.number_format = '#,##0'
+            ac.font = Font(color="006400")
+        qc = ws.cell(row=i, column=7, value=f"=G{i-1}+F{i}-E{i}")
+        qc.number_format = '#,##0'
+        qc.font = Font(bold=True)
+        for c in range(1, 8):
             ws.cell(row=i, column=c).border = border
 
-    ws.column_dimensions["A"].width = 18
-    ws.column_dimensions["B"].width = 10
-    ws.column_dimensions["C"].width = 22
-    ws.column_dimensions["D"].width = 22
-    ws.column_dimensions["E"].width = 18
-    ws.column_dimensions["F"].width = 36
+    # JAMI qatori
+    last = start + len(entries) - 1
+    trow = last + 1
+    ws.cell(row=trow, column=4, value="JAMI").font = Font(bold=True)
+    te = ws.cell(row=trow, column=5, value=f"=SUM(E{start}:E{last})")
+    te.number_format = '#,##0'
+    te.font = Font(bold=True, color="8B0000")
+    ti = ws.cell(row=trow, column=6, value=f"=SUM(F{start}:F{last})")
+    ti.number_format = '#,##0'
+    ti.font = Font(bold=True, color="006400")
+    tq = ws.cell(row=trow, column=7, value=f"=G{last}")
+    tq.number_format = '#,##0'
+    tq.font = Font(bold=True)
+    for c in range(1, 8):
+        ws.cell(row=trow, column=c).border = border
+        ws.cell(row=trow, column=c).fill = open_fill
+
+    ws.column_dimensions["A"].width = 12
+    ws.column_dimensions["B"].width = 8
+    ws.column_dimensions["C"].width = 28
+    ws.column_dimensions["D"].width = 36
+    ws.column_dimensions["E"].width = 15
+    ws.column_dimensions["F"].width = 15
+    ws.column_dimensions["G"].width = 16
 
     # Sheet 2: Xulosa
     ws2 = wb.create_sheet("Xulosa")

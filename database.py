@@ -1021,20 +1021,96 @@ def get_open_tasks_with_skips(employee_id: int):
 
 def create_finance_entry(owner_id: int, entry_type: str, category: str,
                          amount: int, note: str = None,
-                         linked_employee_id: int = None) -> int:
+                         linked_employee_id: int = None,
+                         entry_date_utc: str = None) -> int:
     """Kirim yoki chiqim yozuvi qo'shish.
     entry_type: 'income' yoki 'expense'.
     linked_employee_id: Avans uchun xodim ID (ixtiyoriy).
+    entry_date_utc: 'YYYY-MM-DD HH:MM:SS' (UTC). None bo'lsa — hozirgi vaqt.
     """
     with get_db() as conn:
-        cursor = conn.execute(
-            "INSERT INTO finance_entries "
-            "(owner_id, entry_type, category, amount, note, linked_employee_id) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (owner_id, entry_type, category, amount,
-             (note or None), linked_employee_id or None)
-        )
+        if entry_date_utc:
+            cursor = conn.execute(
+                "INSERT INTO finance_entries "
+                "(owner_id, entry_type, category, amount, note, linked_employee_id, entry_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (owner_id, entry_type, category, amount,
+                 (note or None), linked_employee_id or None, entry_date_utc)
+            )
+        else:
+            cursor = conn.execute(
+                "INSERT INTO finance_entries "
+                "(owner_id, entry_type, category, amount, note, linked_employee_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (owner_id, entry_type, category, amount,
+                 (note or None), linked_employee_id or None)
+            )
         return cursor.lastrowid
+
+
+def get_finance_entry(entry_id: int, owner_id: int):
+    """Bitta yozuv (faqat egasiniki)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM finance_entries WHERE id = ? AND owner_id = ?",
+            (entry_id, owner_id)
+        ).fetchone()
+
+
+def get_finance_entries_by_date(owner_id: int, date_str: str):
+    """Berilgan kun (Toshkent vaqti, 'YYYY-MM-DD') bo'yicha yozuvlar."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM finance_entries
+            WHERE owner_id = ?
+              AND date(entry_date, '+5 hours') = ?
+            ORDER BY entry_date ASC
+            """,
+            (owner_id, date_str)
+        ).fetchall()
+
+
+def delete_finance_entry(entry_id: int, owner_id: int) -> bool:
+    """Yozuvni o'chirish (faqat egasi). True — o'chirildi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM finance_entries WHERE id = ? AND owner_id = ?",
+            (entry_id, owner_id)
+        )
+        return cur.rowcount > 0
+
+
+def get_finance_balance(owner_id: int) -> int:
+    """Umumiy qoldiq: barcha kirimlar − barcha chiqimlar."""
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(CASE WHEN entry_type='income' THEN amount
+                                     ELSE -amount END), 0) AS bal
+            FROM finance_entries WHERE owner_id = ?
+            """,
+            (owner_id,)
+        ).fetchone()
+        return row["bal"] or 0
+
+
+def get_finance_balance_before(owner_id: int, year: int, month: int) -> int:
+    """Berilgan oy boshigacha (Toshkent vaqti) yig'ilgan qoldiq."""
+    first_day = f"{year:04d}-{month:02d}-01"
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(CASE WHEN entry_type='income' THEN amount
+                                     ELSE -amount END), 0) AS bal
+            FROM finance_entries
+            WHERE owner_id = ?
+              AND date(entry_date, '+5 hours') < ?
+            """,
+            (owner_id, first_day)
+        ).fetchone()
+        return row["bal"] or 0
 
 
 def get_monthly_finance_entries(owner_id: int, year: int, month: int):

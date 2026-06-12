@@ -380,10 +380,62 @@ def finance_menu_kb() -> ReplyKeyboardMarkup:
              KeyboardButton(text=texts.BTN_FINANCE_EXPENSE)],
             [KeyboardButton(text=texts.BTN_FINANCE_SUMMARY),
              KeyboardButton(text=texts.BTN_FINANCE_EXCEL)],
+            [KeyboardButton(text=texts.BTN_FINANCE_DELETE)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
         resize_keyboard=True
     )
+
+
+def finance_personal_cats_kb() -> InlineKeyboardMarkup:
+    """Shaxsiy xarajatlar ichki turkumlari."""
+    rows = []
+    for key, (emoji, name) in texts.FINANCE_PERSONAL_CATEGORIES.items():
+        label = name.replace("Shaxsiy: ", "")
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {label}",
+            callback_data=f"fin_cat:expense:{key}"
+        )])
+    rows.append([InlineKeyboardButton(
+        text="⬅️ Ortga", callback_data="fin_cat:expense:backexp"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def finance_date_kb() -> ReplyKeyboardMarkup:
+    """Sana tanlash: bugun tugmasi yoki qo'lda yozish."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_FINANCE_TODAY)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def finance_del_entries_kb(entries) -> InlineKeyboardMarkup:
+    """Sana bo'yicha yozuvlar — o'chirish uchun tanlash."""
+    rows = []
+    for e in entries:
+        cat_info = texts.FINANCE_CATEGORIES.get(e["category"], ("📋", e["category"]))
+        sign = "➕" if e["entry_type"] == "income" else "➖"
+        rows.append([InlineKeyboardButton(
+            text=f"{sign} {e['amount']:,} — {cat_info[1]}",
+            callback_data=f"fin_del:{e['id']}"
+        )])
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="fin_del:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def finance_del_confirm_kb(entry_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, o'chirish",
+                              callback_data=f"fin_delc:{entry_id}"),
+         InlineKeyboardButton(text="❌ Bekor",
+                              callback_data="fin_del:cancel")],
+    ])
 
 
 def finance_categories_kb(entry_type: str) -> InlineKeyboardMarkup:

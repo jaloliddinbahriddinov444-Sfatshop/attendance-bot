@@ -816,7 +816,19 @@ FINANCE_EXPENSE_CATEGORIES = {
     "supply":   ("📦", "Ta'minot"),
     "expense":  ("💸", "Xarajat"),
     "advance":  ("👤", "Hodimlar uchun Avans"),
+    "salary":   ("💼", "Ish haqqi"),
+    "personal": ("🛍", "Shaxsiy xarajatlarim"),
     "other":    ("📝", "Boshqa"),
+}
+
+# Shaxsiy xarajatlar ichki turkumlari
+FINANCE_PERSONAL_CATEGORIES = {
+    "p_transport": ("🚌", "Shaxsiy: Yo'lkira"),
+    "p_food":      ("🍽", "Shaxsiy: Ovqat"),
+    "p_rent":      ("🏠", "Shaxsiy: Ijara"),
+    "p_saving":    ("💰", "Shaxsiy: Jamg'arma"),
+    "p_debt":      ("💳", "Shaxsiy: Qarz"),
+    "p_other":     ("📝", "Shaxsiy: Boshqa"),
 }
 
 FINANCE_INCOME_CATEGORIES = {
@@ -825,7 +837,9 @@ FINANCE_INCOME_CATEGORIES = {
     "other":    ("📝", "Boshqa"),
 }
 
-FINANCE_CATEGORIES = {**FINANCE_EXPENSE_CATEGORIES, **FINANCE_INCOME_CATEGORIES}
+FINANCE_CATEGORIES = {**FINANCE_EXPENSE_CATEGORIES,
+                      **FINANCE_PERSONAL_CATEGORIES,
+                      **FINANCE_INCOME_CATEGORIES}
 
 # Tugmalar
 BTN_FINANCE_INCOME = "➕ Kirim qo'shish"
@@ -834,6 +848,8 @@ BTN_FINANCE_SUMMARY = "📊 Bu oylik xulosa"
 BTN_FINANCE_EXCEL = "📥 Excel hisobot"
 BTN_FINANCE_NOTE_SKIP = "⏭ Izohsiz"
 BTN_FINANCE_CATEGORY_OTHER = "📝 Boshqa (qo'lda izoh)"
+BTN_FINANCE_TODAY = "📅 Bugungi sana"
+BTN_FINANCE_DELETE = "🗑 Yozuvni o'chirish"
 
 # Dialog
 FINANCE_MENU = (
@@ -860,6 +876,43 @@ FINANCE_SAVED = (
     "📅 Sana: <i>{when}</i>{note_line}"
 )
 FINANCE_NOTE_FRAGMENT = "\n💬 Izoh: <i>{note}</i>"
+
+FINANCE_PICK_PERSONAL = (
+    "🛍 <b>Shaxsiy xarajatlarim</b>\n\n"
+    "Ichki turkumini tanlang:"
+)
+FINANCE_ASK_DATE = (
+    "📅 <b>Sana</b>\n\n"
+    "Bugungi sana uchun pastdagi tugmani bosing,\n"
+    "yoki boshqa sanani qo'lda yozing (masalan: <code>05.06.2026</code>):"
+)
+FINANCE_DATE_INVALID = (
+    "⚠️ Sana noto'g'ri. <code>KK.OO.YYYY</code> formatida yozing "
+    "(masalan: <code>05.06.2026</code>) yoki «📅 Bugungi sana» tugmasini bosing."
+)
+FINANCE_DELETE_ASK_DATE = (
+    "🗑 <b>Yozuvni o'chirish</b>\n\n"
+    "Qaysi sanadagi yozuvlarni ko'rasiz?\n"
+    "Bugungi kun uchun tugmani bosing yoki sanani qo'lda yozing "
+    "(masalan: <code>05.06.2026</code>):"
+)
+FINANCE_DELETE_EMPTY = "ℹ️ <b>{date}</b> sanasida sizning yozuvlaringiz yo'q. Boshqa sana yozing yoki Bekor qilish ni bosing."
+FINANCE_DELETE_PICK = "🗑 <b>{date}</b> — o'chirish uchun yozuvni tanlang:"
+FINANCE_DELETE_CONFIRM = (
+    "🗑 <b>Rostdan o'chirilsinmi?</b>\n\n"
+    "{type_emoji} <b>{type_name}</b>\n"
+    "{cat_emoji} Turkum: <i>{category}</i>\n"
+    "💵 Summa: <b>{amount:,} so'm</b>\n"
+    "📅 Sana: <i>{when}</i>{note_line}{advance_warn}"
+)
+FINANCE_DELETE_ADVANCE_WARN = (
+    "\n\n⚠️ Diqqat: bu avans yozuvi. O'chirilsa, xodimning ish haqqidagi "
+    "avans chegirmasi <b>o'chmaydi</b> — uni Admin panel → Ish haqqi "
+    "bo'limidan alohida bekor qiling."
+)
+FINANCE_DELETED = "🗑 Yozuv o'chirildi: {type_emoji} {amount:,} so'm — {category}"
+
+FINANCE_SUMMARY_BALANCE = "\n\n💵 <b>Joriy qoldiq (umumiy):</b> {balance:,} so'm"
 
 FINANCE_SUMMARY_HEADER = "📊 <b>{month} {year}</b> — sizning moliya xulosangiz\n"
 FINANCE_SUMMARY_EMPTY = "\nℹ️ Bu oyda yozuvlar yo'q."
