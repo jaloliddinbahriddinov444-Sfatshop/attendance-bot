@@ -81,6 +81,6 @@ async def unknown_text(message: Message, state: FSMContext):
         return
     await message.answer(
         texts.UNKNOWN_COMMAND,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+        reply_markup=_main_kb(employee)
     )
 

@@ -872,6 +872,18 @@ FINANCE_SUMMARY_CAT_LINE = "\n  {emoji} {category}: {total:,} so'm ({cnt})"
 
 FINANCE_EXCEL_EMPTY = "ℹ️ Bu oyda yozuvlar yo'q — Excel yaratish ma'nosiz."
 FINANCE_NO_PERMISSION = "❌ Moliya bo'limi faqat Boss va Bosh Admin uchun."
+FINANCE_PICK_EMPLOYEE_ADVANCE = (
+    "👤 <b>Hodimlar uchun Avans</b>\n\n"
+    "Avans qaysi xodimga berilishini tanlang:"
+)
+FINANCE_ADVANCE_SALARY_NOTED = (
+    "\n\n💼 Xodimning ish haqqidan <b>−{amount:,} so'm</b> avans sifatida "
+    "chegirildi va unga xabar yuborildi."
+)
+FINANCE_ADVANCE_MONTH_CLOSED = (
+    "🔒 {month} {year} oyi yopilgan — bu oyga avans yozib bo'lmaydi.\n"
+    "Avval oyni qayta oching."
+)
 
 
 # ===== Ofis IP boshqaruvi (dinamik whitelist) =====

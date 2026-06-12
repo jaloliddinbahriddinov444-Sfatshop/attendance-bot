@@ -24,6 +24,8 @@ from database import (
     create_finance_entry,
     get_monthly_finance_entries,
     get_monthly_finance_summary,
+    add_salary_entry,
+    is_month_closed,
 )
 from tzutil import now as tz_now, fmt as fmt_local
 
@@ -135,6 +137,14 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
 
     # Avans bo'lsa — xodim tanlash
     if cat_key == "advance" and entry_type == "expense":
+        now = tz_now()
+        if is_month_closed(now.year, now.month):
+            await call.message.edit_text(
+                texts.FINANCE_ADVANCE_MONTH_CLOSED.format(
+                    month=texts.MONTHS_UZ[now.month], year=now.year
+                )
+            )
+            return
         employees = get_all_employees(active_only=True)
         # Boss va Bosh Admin hisoblanmaydi
         employees = [e for e in employees if e["role"] not in ("boss", "bosh_admin")]
@@ -143,9 +153,8 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
                 "❌ Aktiv xodimlar yo'q.",
             )
             return
-        await call.message.edit_text(texts.FINANCE_PICK_EMPLOYEE_ADVANCE)
-        await call.message.answer(
-            "Xodimni tanlang:",
+        await call.message.edit_text(
+            texts.FINANCE_PICK_EMPLOYEE_ADVANCE,
             reply_markup=kb.finance_employees_kb(employees)
         )
         await state.set_state(FinanceEntry.selecting_employee)
@@ -243,7 +252,7 @@ async def finance_amount_handler(message: Message, state: FSMContext):
 # ===== Izoh va saqlash =====
 
 @router.message(FinanceEntry.entering_note, F.text)
-async def finance_note_handler(message: Message, state: FSMContext):
+async def finance_note_handler(message: Message, state: FSMContext, bot: Bot):
     from html import escape as _esc
     if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
@@ -267,6 +276,39 @@ async def finance_note_handler(message: Message, state: FSMContext):
         )
         logger.info("Finance entry %s yaratildi: owner=%s, %s %s",
                     entry_id, data["fin_owner"], data["fin_type"], data["fin_amount"])
+
+        # Avans: xodimning ish haqqidan ham chegirish + bildirishnoma
+        salary_note_line = ""
+        if data["fin_cat_key"] == "advance" and data.get("fin_linked_emp_id"):
+            reason = note or "Moliya bo'limidan avans"
+            try:
+                add_salary_entry(
+                    employee_id=data["fin_linked_emp_id"],
+                    entry_type="avans",
+                    amount=int(data["fin_amount"]),
+                    reason=reason,
+                    created_by=data["fin_owner"],
+                )
+                salary_note_line = texts.FINANCE_ADVANCE_SALARY_NOTED.format(
+                    amount=int(data["fin_amount"])
+                )
+                emp = get_employee_by_id(data["fin_linked_emp_id"])
+                if emp and emp["telegram_id"] > 0:
+                    try:
+                        await bot.send_message(
+                            emp["telegram_id"],
+                            texts.NOTIFY_SALARY_ADDED.format(
+                                emoji="💸", type_name="Avans", sign="−",
+                                amount=int(data["fin_amount"]),
+                                reason=_esc(reason),
+                            )
+                        )
+                    except Exception as notify_exc:
+                        logger.warning("Avans bildirishnoma xato: tg=%s %s",
+                                       emp["telegram_id"], notify_exc)
+            except Exception as sal_exc:
+                logger.exception("Avans ish haqqi yozuvi xato: %s", sal_exc)
+
         type_emoji = "➕" if data["fin_type"] == "income" else "➖"
         type_name = "Kirim" if data["fin_type"] == "income" else "Chiqim"
         note_line = texts.FINANCE_NOTE_FRAGMENT.format(note=_esc(note)) if note else ""
@@ -279,7 +321,7 @@ async def finance_note_handler(message: Message, state: FSMContext):
                 amount=int(data["fin_amount"]),
                 when=tz_now().strftime("%d.%m.%Y %H:%M"),
                 note_line=note_line,
-            ),
+            ) + salary_note_line,
             reply_markup=kb.finance_menu_kb()
         )
     except KeyError as exc:
@@ -292,7 +334,7 @@ async def finance_note_handler(message: Message, state: FSMContext):
         logger.exception("Finance note handler xato: %s", exc)
         await message.answer(
             f"Saqlashda xato yuz berdi.\n\n"
-            f"<code>{type(exc).__name__}: {exc}</code>\n\n"
+            f"<code>{type(exc).__name__}: {_esc(str(exc))}</code>\n\n"
             f"Qayta urinib koring.",
             reply_markup=kb.finance_menu_kb()
         )
