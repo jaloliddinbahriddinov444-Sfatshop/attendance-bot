@@ -197,8 +197,9 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
             vc.number_format = "#,##0"
 
     # === Ustun kengliklarini sozlash ===
+    from openpyxl.utils import get_column_letter
     for i, w in enumerate([14, 14, 10, 10, 16, 18], 1):
-        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+        ws.column_dimensions[get_column_letter(i)].width = w
 
 
 def _build_emp_excel(emp_id: int, year: int, month: int) -> bytes:
