@@ -99,7 +99,14 @@ async def boss_emp_detail(call: CallbackQuery):
         return
 
     text = _format_employee_detail(emp)
-    await call.message.edit_text(text)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb_inline = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📥 Hodim ma'lumotlari excel hisoboti",
+            callback_data=f"empdata_excel:{emp_id}"
+        )],
+    ])
+    await call.message.edit_text(text, reply_markup=kb_inline)
     await call.answer()
 
 
