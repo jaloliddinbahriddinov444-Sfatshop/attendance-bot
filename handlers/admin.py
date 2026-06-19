@@ -50,7 +50,7 @@ def _admin_kb(actor) -> object:
 def _section_kb(actor, section: str):
     """Amal tugagach Bosh Admin uchun tegishli bo'lim menyusini qaytaradi."""
     emp = get_employee_by_telegram_id(actor.from_user.id)
-    if emp and (emp.get("role") or "") == "bosh_admin":
+    if emp and ("role" in emp.keys()) and emp["role"] == "bosh_admin":
         if section == "attendance":
             return kb.grp_attendance_kb()
         elif section == "finance":

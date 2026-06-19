@@ -315,6 +315,7 @@ BTN_ADMIN_PROMOTE = "👑 Admin tayinlash"
 BTN_ADMIN_TODAY = "📅 Bugungi hisobot"
 BTN_ADMIN_SETTINGS = "🏢 Ishxona sozlamalari"
 BTN_ADMIN_EXPORT = "📊 Excel hisobot"
+BTN_ADMIN_EMP_EXCEL = "📋 Xodimlar ish haqqi (Excel)"
 
 # ===== Bosh Admin: bo'limlarga guruhlash (faqat bosh_admin menyusi) =====
 # Asosiy admin paneldagi tugmalar bo'limlarga yig'ildi. Har bo'lim bosilganda
