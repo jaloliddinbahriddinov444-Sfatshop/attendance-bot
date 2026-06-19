@@ -47,6 +47,19 @@ def _admin_kb(actor) -> object:
     return kb.admin_menu_kb(is_bosh_admin=(role == "bosh_admin"))
 
 
+def _section_kb(actor, section: str):
+    """Amal tugagach Bosh Admin uchun tegishli bo'lim menyusini qaytaradi."""
+    emp = get_employee_by_telegram_id(actor.from_user.id)
+    if emp and (emp.get("role") or "") == "bosh_admin":
+        if section == "attendance":
+            return kb.grp_attendance_kb()
+        elif section == "finance":
+            return kb.grp_finance_kb()
+        elif section == "employees":
+            return kb.grp_employees_kb()
+    return _admin_kb(actor)
+
+
 def _is_admin(message: Message) -> bool:
     emp = get_employee_by_telegram_id(message.from_user.id)
     return emp is not None and bool(emp["is_admin"])
@@ -703,7 +716,7 @@ async def admin_att_save_time(message: Message, state: FSMContext):
             name=emp["full_name"], date=pretty_date, weekday=weekday,
             action=action_name, time=time_str
         ),
-        reply_markup=_admin_kb(message)
+        reply_markup=_section_kb(message, "attendance")
     )
 
 
@@ -818,7 +831,7 @@ async def admin_rate_save(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         texts.ADMIN_RATE_SAVED.format(name=emp["full_name"], rate=rate),
-        reply_markup=_admin_kb(message)
+        reply_markup=_section_kb(message, "finance")
     )
 
 
@@ -1047,7 +1060,7 @@ async def _do_save_salary(message: Message, state: FSMContext, bot: Bot, data: d
             name=data["sal_emp_name"],
             amount=data["sal_amount"], reason=reason
         ),
-        reply_markup=_admin_kb(message)
+        reply_markup=_section_kb(message, "finance")
     )
 
     # Bildirishnoma
@@ -1171,7 +1184,7 @@ async def admin_salary_cancel_save(message: Message, state: FSMContext, bot: Bot
             emoji=type_info[0], type_name=type_info[1],
             amount=data["sal_cancel_amount"], cancel_reason=cancel_reason
         ),
-        reply_markup=_admin_kb(message)
+        reply_markup=_section_kb(message, "finance")
     )
 
     # Bildirishnoma

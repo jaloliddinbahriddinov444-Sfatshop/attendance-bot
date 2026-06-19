@@ -49,10 +49,21 @@ async def cmd_start(message: Message, state: FSMContext):
 @router.message(Command("cancel"))
 @router.message(F.text == texts.BTN_CANCEL)
 async def cmd_cancel(message: Message, state: FSMContext):
+    current_state = await state.get_state()
     await state.clear()
     employee = get_employee_by_telegram_id(message.from_user.id)
     if employee:
-        await message.answer(texts.CANCELLED, reply_markup=_main_kb(employee))
+        # Admin FSM holatida bo'lsa — admin menyuga qaytish
+        is_admin_flow = current_state and any(
+            current_state.startswith(p) for p in (
+                "AdminPanel:", "AdminSalary:", "TaskCreate:", "AdminAddEmployee:", "FinanceEntry:", "FinanceDelete:"
+            )
+        )
+        if bool(employee["is_admin"]) and is_admin_flow:
+            from handlers.admin import _admin_kb
+            await message.answer(texts.ADMIN_MENU, reply_markup=_admin_kb(message))
+        else:
+            await message.answer(texts.CANCELLED, reply_markup=_main_kb(employee))
     else:
         await message.answer(texts.CANCELLED, reply_markup=kb.remove_kb())
 

@@ -652,10 +652,14 @@ def _build_finance_excel(entries, summary, year: int, month: int,
         cell.border = border
         cell.fill = open_fill
 
-    # Yozuvlar: har qator o'z qoldig'i bilan (formula: oldingi + kirim − rasxod)
+    # Yozuvlar: har qator o'z qoldig'i bilan (Python da hisoblanadi, formula emas)
     start = open_row + 1
+    running = opening
+    exp_total = 0
+    inc_total = 0
     for idx, e in enumerate(entries):
         i = start + idx
+        amount = e["amount"]
         cat_info = texts.FINANCE_CATEGORIES.get(e["category"], ("📋", e["category"]))
         ws.cell(row=i, column=1, value=fmt_local(e["entry_date"], "%d.%m.%Y"))
         ws.cell(row=i, column=2, value=fmt_local(e["entry_date"], "%H:%M"))
@@ -668,14 +672,18 @@ def _build_finance_excel(entries, summary, year: int, month: int,
                 note = f"Avans: {emp['full_name']}" + (f" — {note}" if note else "")
         ws.cell(row=i, column=4, value=note)
         if e["entry_type"] == "expense":
-            ac = ws.cell(row=i, column=5, value=e["amount"])
+            ac = ws.cell(row=i, column=5, value=amount)
             ac.number_format = '#,##0'
             ac.font = Font(color="8B0000")
+            running -= amount
+            exp_total += amount
         else:
-            ac = ws.cell(row=i, column=6, value=e["amount"])
+            ac = ws.cell(row=i, column=6, value=amount)
             ac.number_format = '#,##0'
             ac.font = Font(color="006400")
-        qc = ws.cell(row=i, column=7, value=f"=G{i-1}+F{i}-E{i}")
+            running += amount
+            inc_total += amount
+        qc = ws.cell(row=i, column=7, value=running)
         qc.number_format = '#,##0'
         qc.font = Font(bold=True)
         for c in range(1, 8):
@@ -685,13 +693,13 @@ def _build_finance_excel(entries, summary, year: int, month: int,
     last = start + len(entries) - 1
     trow = last + 1
     ws.cell(row=trow, column=4, value="JAMI").font = Font(bold=True)
-    te = ws.cell(row=trow, column=5, value=f"=SUM(E{start}:E{last})")
+    te = ws.cell(row=trow, column=5, value=exp_total)
     te.number_format = '#,##0'
     te.font = Font(bold=True, color="8B0000")
-    ti = ws.cell(row=trow, column=6, value=f"=SUM(F{start}:F{last})")
+    ti = ws.cell(row=trow, column=6, value=inc_total)
     ti.number_format = '#,##0'
     ti.font = Font(bold=True, color="006400")
-    tq = ws.cell(row=trow, column=7, value=f"=G{last}")
+    tq = ws.cell(row=trow, column=7, value=running)
     tq.number_format = '#,##0'
     tq.font = Font(bold=True)
     for c in range(1, 8):

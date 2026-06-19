@@ -8,8 +8,9 @@ import texts
 import keyboards as kb
 from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
-    get_today_attendance, get_monthly_worked_minutes,
+    get_today_attendance, get_monthly_worked_minutes, get_monthly_attendance,
     get_active_salary_entries, get_open_tasks_with_skips,
+    get_monthly_base_salary, get_salary_totals_by_type,
 )
 from tzutil import now as tz_now, fmt as fmt_local
 
@@ -152,11 +153,21 @@ def _format_employee_detail(emp) -> str:
     # Bu oyda ishlangan
     now = tz_now()
     minutes = get_monthly_worked_minutes(emp["id"], now.year, now.month)
-    out += texts.EMP_DETAIL_MONTH.format(hours=minutes // 60, minutes=minutes % 60)
+    att_records = get_monthly_attendance(emp["id"], now.year, now.month)
+    days_count = len([r for r in att_records if r["first_in"]])
+    out += (
+        f"\n\n📅 <b>Bu oyda ({texts.MONTHS_UZ[now.month]}):</b> "
+        f"<i>{days_count} kun, {minutes // 60} soat {minutes % 60} daqiqa</i>"
+    )
 
-    # Maosh yozuvlari (faol) — Phase 3B kelguncha hammasi "active" hisoblanadi
+    # Maosh yozuvlari (faol)
     entries = get_active_salary_entries(emp["id"], now.year, now.month)
+    base = get_monthly_base_salary(emp["id"], now.year, now.month)
+    totals = get_salary_totals_by_type(emp["id"], now.year, now.month)
+    total_sal = (base - totals["avans"] - totals["jarima"]
+                 + totals["mukofot"] + totals["bonus"] - totals["mahsulot"])
     out += texts.EMP_DETAIL_SALARY_HEADER
+    out += f"\n  💵 Asosiy: <b>+{base:,} so'm</b>"
     if entries:
         for e in entries:
             info = texts.SALARY_TYPES.get(e["entry_type"], ("📋", "?", ""))
@@ -167,6 +178,7 @@ def _format_employee_detail(emp) -> str:
             )
     else:
         out += texts.EMP_DETAIL_SALARY_NONE
+    out += f"\n<b>📊 Jami: {total_sal:,} so'm</b>"
 
     # Tugatilmagan vazifalar
     open_tasks = get_open_tasks_with_skips(emp["id"])
