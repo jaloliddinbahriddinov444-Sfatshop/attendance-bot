@@ -56,12 +56,23 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
         emp["role"] if "role" in emp.keys() else "", "Xodim"
     )
 
-    # === Xodim ma'lumotlari (1–5-qatorlar) ===
+    # Karta raqami
+    raw_card = (emp["card_number"] if "card_number" in emp.keys() else "") or ""
+    card_holder = (emp["card_holder_name"] if "card_holder_name" in emp.keys() else "") or ""
+    digits = "".join(ch for ch in raw_card if ch.isdigit())
+    if digits:
+        grouped = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+        card_val = f"{grouped} ({card_holder.strip()})" if card_holder.strip() else grouped
+    else:
+        card_val = ""
+
+    # === Xodim ma'lumotlari ===
     info = [
         ("Xodim:", emp["full_name"]),
         ("Telefon:", emp["phone"]),
         ("Lavozim:", emp["position"]),
         ("Rol:", role_label),
+        ("Plastik karta:", card_val),
         ("Hisobot davri:", f"{texts.MONTHS_UZ[month]} {year}"),
     ]
     for r, (label, val) in enumerate(info, 1):
@@ -72,8 +83,8 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
         vc.font = Font(bold=True)
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
 
-    # === Davomat jadvali sarlavhasi (7-qator) ===
-    header_row = 7
+    # === Davomat jadvali sarlavhasi ===
+    header_row = len(info) + 2  # info qatorlari + 1 bo'sh qator + sarlavha
     headers = ["Sana", "Hafta kuni", "Kirish", "Chiqish", "Ishlagan vaqt", "Kunlik ish haqqi"]
     for col, h in enumerate(headers, 1):
         c = ws.cell(row=header_row, column=col, value=h)
@@ -484,7 +495,7 @@ async def emp_data_detail(call: CallbackQuery):
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📥 Excel hisobot", callback_data=f"empdata_excel:{emp_id}")],
+        [InlineKeyboardButton(text="📥 Hodim ma'lumotlari excel hisoboti", callback_data=f"empdata_excel:{emp_id}")],
         [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"empdata_back_emp:{emp_id}")],
     ])
 
