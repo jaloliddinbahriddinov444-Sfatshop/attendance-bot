@@ -54,8 +54,17 @@ async def bc_start(message: Message, state: FSMContext):
         return
     await state.clear()
     await state.update_data(sender_emp_id=me["id"])
-    await message.answer(texts.BC_CHOOSE_TARGET, reply_markup=kb.bc_target_kb())
+    chat_title = get_setting(BC_CHAT_TITLE_KEY)
+    await message.answer(texts.BC_CHOOSE_TARGET,
+                         reply_markup=kb.bc_target_kb(chat_title))
     await state.set_state(Broadcast.target)
+
+
+@router.callback_query(Broadcast.target, F.data == "bc_change_chat")
+async def bc_change_chat(call: CallbackQuery, state: FSMContext):
+    await state.set_state(Broadcast.setup_chat)
+    await call.message.edit_text(texts.BC_NO_CHAT)
+    await call.answer()
 
 
 # ─── Target: kanal ─────────────────────────────────────────────────────────

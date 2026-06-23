@@ -611,12 +611,24 @@ def emp_in_position_kb(employees, pos_id: int) -> InlineKeyboardMarkup:
 
 # ===== Xabarnoma (Broadcast) =====
 
-def bc_target_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=texts.BC_BTN_CHANNEL, callback_data="bc_target:channel")],
+def bc_target_kb(chat_title: str = None) -> InlineKeyboardMarkup:
+    if chat_title:
+        channel_btn_text = f"📢 {chat_title}"
+    else:
+        channel_btn_text = texts.BC_BTN_CHANNEL
+    rows = [
+        [InlineKeyboardButton(text=channel_btn_text, callback_data="bc_target:channel")],
+    ]
+    if chat_title:
+        rows.append([InlineKeyboardButton(
+            text="🔄 Boshqa kanal/guruhni ulash",
+            callback_data="bc_change_chat"
+        )])
+    rows += [
         [InlineKeyboardButton(text=texts.BC_BTN_ONE_EMP, callback_data="bc_target:emp")],
         [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")],
-    ])
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def bc_content_type_kb() -> InlineKeyboardMarkup:
