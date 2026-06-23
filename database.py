@@ -141,6 +141,36 @@ def init_db():
             added_by INTEGER,
             added_at TIMESTAMP DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS broadcasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_emp_id INTEGER NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id INTEGER,
+            content_type TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (sender_emp_id) REFERENCES employees(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS broadcast_reactions (
+            broadcast_id INTEGER NOT NULL,
+            employee_id INTEGER NOT NULL,
+            reaction TEXT NOT NULL,
+            reacted_at TIMESTAMP DEFAULT (datetime('now')),
+            PRIMARY KEY (broadcast_id, employee_id),
+            FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS broadcast_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            broadcast_id INTEGER NOT NULL,
+            employee_id INTEGER NOT NULL,
+            comment TEXT NOT NULL,
+            commented_at TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        );
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -1166,6 +1196,15 @@ def get_position(pos_id: int):
         return conn.execute("SELECT * FROM positions WHERE id=?", (pos_id,)).fetchone()
 
 
+def get_employees_by_position_id(position_id: int):
+    """Muayyan lavozimga biriktirilgan barcha faol xodimlar."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM employees WHERE position_id = ? AND is_active = 1 ORDER BY full_name",
+            (position_id,)
+        ).fetchall()
+
+
 def create_position(name: str, work_hours: int, min_rate: int, max_rate: int) -> int:
     with get_db() as conn:
         cur = conn.execute(
@@ -1254,3 +1293,49 @@ def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
         except Exception:
             continue
     return total
+
+
+# ===== Xabarnoma (Broadcast) =====
+
+def create_broadcast(sender_emp_id: int, target_type: str,
+                     target_id: Optional[int], content_type: str) -> int:
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO broadcasts (sender_emp_id, target_type, target_id, content_type) "
+            "VALUES (?, ?, ?, ?)",
+            (sender_emp_id, target_type, target_id, content_type)
+        )
+        return cur.lastrowid
+
+
+def save_broadcast_reaction(broadcast_id: int, employee_id: int, reaction: str):
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO broadcast_reactions (broadcast_id, employee_id, reaction)
+               VALUES (?, ?, ?)
+               ON CONFLICT(broadcast_id, employee_id)
+               DO UPDATE SET reaction = excluded.reaction,
+                             reacted_at = datetime('now')""",
+            (broadcast_id, employee_id, reaction)
+        )
+
+
+def get_broadcast_sender(broadcast_id: int):
+    with get_db() as conn:
+        return conn.execute(
+            """SELECT b.sender_emp_id, e.telegram_id AS tg_id, e.full_name
+               FROM broadcasts b
+               JOIN employees e ON e.id = b.sender_emp_id
+               WHERE b.id = ?""",
+            (broadcast_id,)
+        ).fetchone()
+
+
+def save_broadcast_comment(broadcast_id: int, employee_id: int, comment: str) -> int:
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO broadcast_comments (broadcast_id, employee_id, comment) "
+            "VALUES (?, ?, ?)",
+            (broadcast_id, employee_id, comment)
+        )
+        return cur.lastrowid

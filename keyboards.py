@@ -175,6 +175,7 @@ def grp_control_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=texts.BTN_POSITIONS)],
             [KeyboardButton(text=texts.BTN_ADMIN_PROMOTE),
              KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)],
+            [KeyboardButton(text=texts.BTN_BROADCAST)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
         ],
         resize_keyboard=True,
@@ -347,6 +348,7 @@ def boss_panel_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=texts.BTN_BOSS_ATTENDANCE)],
             [KeyboardButton(text=texts.BTN_ADMIN_TASKS),
              KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
+            [KeyboardButton(text=texts.BTN_BROADCAST)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
         resize_keyboard=True
@@ -605,3 +607,67 @@ def emp_in_position_kb(employees, pos_id: int) -> InlineKeyboardMarkup:
         text="⬅️ Lavozimlar", callback_data="empdata_back"
     )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ===== Xabarnoma (Broadcast) =====
+
+def bc_target_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BC_BTN_ALL, callback_data="bc_target:all")],
+        [InlineKeyboardButton(text=texts.BC_BTN_BY_POS, callback_data="bc_target:pos")],
+        [InlineKeyboardButton(text=texts.BC_BTN_ONE_EMP, callback_data="bc_target:emp")],
+        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")],
+    ])
+
+
+def bc_content_type_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BC_BTN_TEXT, callback_data="bc_type:text"),
+         InlineKeyboardButton(text=texts.BC_BTN_PHOTO, callback_data="bc_type:photo")],
+        [InlineKeyboardButton(text=texts.BC_BTN_VIDEO, callback_data="bc_type:video"),
+         InlineKeyboardButton(text=texts.BC_BTN_FILE, callback_data="bc_type:file")],
+        [InlineKeyboardButton(text=texts.BC_BTN_POLL, callback_data="bc_type:poll")],
+        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")],
+    ])
+
+
+def bc_positions_kb(positions) -> InlineKeyboardMarkup:
+    rows = []
+    for pos in positions:
+        rows.append([InlineKeyboardButton(
+            text=f"💼 {pos['name']}",
+            callback_data=f"bc_pos:{pos['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def bc_employees_kb(employees) -> InlineKeyboardMarkup:
+    rows = []
+    for emp in employees:
+        rows.append([InlineKeyboardButton(
+            text=f"👤 {emp['full_name']}",
+            callback_data=f"bc_emp:{emp['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def bc_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BC_BTN_SEND, callback_data="bc_confirm:yes"),
+         InlineKeyboardButton(text=texts.BC_BTN_CANCEL, callback_data="bc_cancel")],
+    ])
+
+
+def bc_reaction_kb(broadcast_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👍", callback_data=f"bc_react:{broadcast_id}:👍"),
+            InlineKeyboardButton(text="❤️", callback_data=f"bc_react:{broadcast_id}:❤️"),
+            InlineKeyboardButton(text="😂", callback_data=f"bc_react:{broadcast_id}:😂"),
+            InlineKeyboardButton(text="😮", callback_data=f"bc_react:{broadcast_id}:😮"),
+            InlineKeyboardButton(text=texts.BC_COMMENT_BTN,
+                                 callback_data=f"bc_comment:{broadcast_id}"),
+        ]
+    ])

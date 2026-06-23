@@ -1099,3 +1099,65 @@ EMP_FULL_SALARY_TOTAL = "  <b>Jami: {total:,} so'm</b>\n"
 EMP_FULL_TASKS_HEADER = "\n📝 <b>Tugatilmagan vazifalar:</b>\n"
 EMP_FULL_TASK_LINE = "  • <b>{title}</b> ({by}){skips}\n"
 EMP_FULL_NO_DATA = "<i>Ma'lumot yo'q</i>"
+
+
+# ===== Xabarnoma (Broadcast) =====
+
+BTN_BROADCAST = "📢 Xabarnoma yuborish"
+
+BC_CHOOSE_TARGET = (
+    "📢 <b>Xabarnoma yuborish</b>\n\n"
+    "Xabar kimga yuborilsin?"
+)
+BC_BTN_ALL = "👥 Barcha xodimlar"
+BC_BTN_BY_POS = "💼 Lavozim bo'yicha"
+BC_BTN_ONE_EMP = "👤 Alohida xodim"
+
+BC_CHOOSE_POS = "💼 Lavozimni tanlang:"
+BC_CHOOSE_EMP = "👤 Xodimni tanlang:"
+
+BC_CHOOSE_CONTENT = "📨 <b>Xabar turini tanlang:</b>"
+BC_BTN_TEXT = "📝 Matn"
+BC_BTN_PHOTO = "🖼 Rasm"
+BC_BTN_VIDEO = "🎬 Video"
+BC_BTN_FILE = "📄 Fayl"
+BC_BTN_POLL = "📊 So'rovnoma"
+
+BC_ENTER_TEXT = "✏️ Xabar matnini yozing:"
+BC_SEND_PHOTO = "🖼 Rasmni yuboring (ixtiyoriy izoh bilan birga):"
+BC_SEND_VIDEO = "🎬 Videoni yuboring (ixtiyoriy izoh bilan birga):"
+BC_SEND_FILE = "📄 Faylni yuboring (ixtiyoriy izoh bilan birga):"
+
+BC_POLL_QUESTION = "📊 <b>So'rovnoma savoli:</b>\nSavolni yozing:"
+BC_POLL_OPTIONS = (
+    "📝 Javob variantlarini kiriting.\n"
+    "Har bir variant <b>yangi qatordan</b> (2–10 ta variant):\n\n"
+    "<code>Ha\nYo'q\nBilmayman</code>"
+)
+BC_POLL_MIN_OPTIONS = "❌ Kamida <b>2 ta</b> variant kerak."
+BC_POLL_MAX_OPTIONS = "❌ Ko'pi bilan <b>10 ta</b> variant bo'lishi mumkin."
+
+BC_CONFIRM = (
+    "✅ <b>Yuborishni tasdiqlaysizmi?</b>\n\n"
+    "👥 Kimga: <b>{target}</b>\n"
+    "📨 Tur: <b>{ctype}</b>"
+)
+BC_BTN_SEND = "✅ Ha, yuborish"
+BC_BTN_CANCEL = "❌ Bekor"
+BC_SENDING = "⏳ Yuborilmoqda..."
+BC_DONE = "✅ Xabar <b>{sent}</b> nafar xodimga yuborildi."
+BC_NO_RECIPIENTS = "❌ Yuborish uchun hech kim topilmadi."
+
+BC_HEADER = "📢 <b>{sender}</b> xabari:"
+
+BC_REACT_SAVED = "Reaksiya qabul qilindi!"
+BC_COMMENT_BTN = "✏️ Izoh yozish"
+BC_COMMENT_ASK = (
+    "✏️ <b>Izohingizni yozing:</b>\n\n"
+    "<i>Xabar jo'natuvchiga yuboriladi.</i>"
+)
+BC_COMMENT_SENT = "✅ Izohingiz yuborildi."
+BC_COMMENT_FORWARD = (
+    "💬 <b>{emp_name}</b> izoh yozdi:\n\n"
+    "{comment}"
+)
