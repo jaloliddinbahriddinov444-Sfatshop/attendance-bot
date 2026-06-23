@@ -142,6 +142,18 @@ def init_db():
             added_at TIMESTAMP DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS personal_finance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            entry_type TEXT NOT NULL CHECK(entry_type IN ('income','expense')),
+            category TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            note TEXT DEFAULT '',
+            entry_date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS broadcasts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender_emp_id INTEGER NOT NULL,
@@ -1339,3 +1351,62 @@ def save_broadcast_comment(broadcast_id: int, employee_id: int, comment: str) ->
             (broadcast_id, employee_id, comment)
         )
         return cur.lastrowid
+
+
+# ===== Shaxsiy moliya (Personal Finance) =====
+
+def pf_add_entry(employee_id: int, entry_type: str, category: str,
+                 amount: int, note: str, entry_date: str) -> int:
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO personal_finance "
+            "(employee_id, entry_type, category, amount, note, entry_date) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (employee_id, entry_type, category, amount, note or "", entry_date)
+        )
+        return cur.lastrowid
+
+
+def pf_get_monthly(employee_id: int, year: int, month: int):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM personal_finance "
+            "WHERE employee_id = ? "
+            "  AND strftime('%Y', entry_date) = ? "
+            "  AND strftime('%m', entry_date) = ? "
+            "ORDER BY entry_date DESC, id DESC",
+            (employee_id, str(year), f"{month:02d}")
+        ).fetchall()
+
+
+def pf_get_summary(employee_id: int, year: int, month: int) -> dict:
+    """Oylik kirim/chiqim jami va kategoriya bo'yicha."""
+    rows = pf_get_monthly(employee_id, year, month)
+    income_total = sum(r["amount"] for r in rows if r["entry_type"] == "income")
+    expense_total = sum(r["amount"] for r in rows if r["entry_type"] == "expense")
+    by_cat: dict = {}
+    for r in rows:
+        key = (r["entry_type"], r["category"])
+        by_cat[key] = by_cat.get(key, 0) + r["amount"]
+    return {
+        "income": income_total,
+        "expense": expense_total,
+        "net": income_total - expense_total,
+        "by_cat": by_cat,
+    }
+
+
+def pf_get_entry(entry_id: int, employee_id: int):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM personal_finance WHERE id = ? AND employee_id = ?",
+            (entry_id, employee_id)
+        ).fetchone()
+
+
+def pf_delete_entry(entry_id: int, employee_id: int):
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM personal_finance WHERE id = ? AND employee_id = ?",
+            (entry_id, employee_id)
+        )

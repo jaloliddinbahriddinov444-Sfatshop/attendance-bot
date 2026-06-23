@@ -1103,6 +1103,75 @@ EMP_FULL_NO_DATA = "<i>Ma'lumot yo'q</i>"
 
 # ===== Xabarnoma (Broadcast) =====
 
+# ===== Shaxsiy moliya =====
+
+BTN_PERSONAL_FINANCE = "📊 Shaxsiy xarajatlarim"
+
+PF_MENU = (
+    "📊 <b>Shaxsiy xarajatlarim</b>\n\n"
+    "Bu bo'lim faqat sizga ko'rinadi. "
+    "Shaxsiy kirim va chiqimlaringizni kuzating."
+)
+BTN_PF_INCOME = "➕ Kirim"
+BTN_PF_EXPENSE = "➖ Chiqim"
+BTN_PF_SUMMARY = "📈 Bu oy hisoboti"
+BTN_PF_EXCEL = "📥 Excel hisobot"
+BTN_PF_DELETE = "🗑 Yozuvni o'chirish"
+
+PF_PICK_CAT_INCOME = "💰 Kirim turini tanlang:"
+PF_PICK_CAT_EXPENSE = "💸 Chiqim turini tanlang:"
+PF_ENTER_AMOUNT = (
+    "💵 <b>{cat}</b>\n\n"
+    "Summani kiriting (faqat son, so'mda):\n"
+    "<i>Misol: 150000</i>"
+)
+PF_AMOUNT_INVALID = "❌ Iltimos, musbat son kiriting. Misol: <code>50000</code>"
+PF_ENTER_NOTE = "📝 Izoh kiriting (ixtiyoriy):"
+BTN_PF_NOTE_SKIP = "⏭ Izohsiz"
+PF_ENTER_DATE = (
+    "📅 Sanani tanlang yoki kiriting:\n"
+    "<i>Format: 23.06.2026</i>"
+)
+BTN_PF_TODAY = "📅 Bugun"
+PF_DATE_INVALID = "❌ Sana noto'g'ri. Format: <code>23.06.2026</code>"
+PF_SAVED = "✅ Yozildi: <b>{sign}{amount:,} so'm</b> — {cat}"
+
+PF_SUMMARY_HEADER = "📊 <b>Shaxsiy moliya — {month} {year}</b>\n\n"
+PF_SUMMARY_INCOME = "💰 <b>Kirim jami: {total:,} so'm</b>\n"
+PF_SUMMARY_EXPENSE = "\n💸 <b>Chiqim jami: {total:,} so'm</b>\n"
+PF_SUMMARY_LINE = "  {emoji} {name}: <b>{amount:,}</b>\n"
+PF_SUMMARY_NET_PLUS = "\n📈 <b>Sof qoldiq: +{net:,} so'm</b>"
+PF_SUMMARY_NET_MINUS = "\n📉 <b>Sof qoldiq: -{net:,} so'm</b>"
+PF_SUMMARY_EMPTY = "📊 Bu oyda hech qanday yozuv yo'q."
+
+PF_DELETE_PICK = "🗑 O'chirish uchun yozuvni tanlang ({month}):"
+PF_DELETE_EMPTY = "📭 Bu oyda o'chirishga yozuv yo'q."
+PF_DELETED = "✅ Yozuv o'chirildi."
+
+# Shaxsiy moliya kategoriyalari
+PF_EXPENSE_CATS = {
+    "subscription": ("📱", "Oylik obuna"),
+    "transport":    ("🚗", "Yo'lkira"),
+    "food":         ("🍽", "Ovqat"),
+    "entertainment":("🎮", "Ko'ngil ochar"),
+    "debt_pay":     ("💸", "Qarz to'lash"),
+    "charity":      ("🤲", "Ehson va hadiya"),
+    "clothing":     ("👕", "Kiyim-kechak"),
+    "shopping":     ("🛒", "Xarid"),
+    "pf_other":     ("📋", "Boshqa"),
+}
+
+PF_INCOME_CATS = {
+    "salary":       ("💵", "Ish haqqi"),
+    "daily_income": ("📈", "Kunlik daromad"),
+    "loan_in":      ("🤝", "Qarz olish"),
+    "pf_inc_other": ("📋", "Boshqa"),
+}
+
+PF_ALL_CATS = {**PF_EXPENSE_CATS, **PF_INCOME_CATS}
+
+# ===== Xabarnoma (Broadcast) =====
+
 BTN_BROADCAST = "📢 Xabarnoma yuborish"
 
 BC_CHOOSE_TARGET = (

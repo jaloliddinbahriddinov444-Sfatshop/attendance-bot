@@ -385,10 +385,91 @@ def finance_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=texts.BTN_FINANCE_SUMMARY),
              KeyboardButton(text=texts.BTN_FINANCE_EXCEL)],
             [KeyboardButton(text=texts.BTN_FINANCE_DELETE)],
+            [KeyboardButton(text=texts.BTN_PERSONAL_FINANCE)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
         resize_keyboard=True
     )
+
+
+def pf_menu_kb() -> ReplyKeyboardMarkup:
+    """Shaxsiy moliya menyusi."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_PF_INCOME),
+             KeyboardButton(text=texts.BTN_PF_EXPENSE)],
+            [KeyboardButton(text=texts.BTN_PF_SUMMARY),
+             KeyboardButton(text=texts.BTN_PF_EXCEL)],
+            [KeyboardButton(text=texts.BTN_PF_DELETE)],
+            [KeyboardButton(text=texts.BTN_BACK)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def pf_income_cats_kb() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{emoji} {name}",
+            callback_data=f"pf_cat:income:{key}"
+        )]
+        for key, (emoji, name) in texts.PF_INCOME_CATS.items()
+    ]
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="pf_cat:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def pf_expense_cats_kb() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{emoji} {name}",
+            callback_data=f"pf_cat:expense:{key}"
+        )]
+        for key, (emoji, name) in texts.PF_EXPENSE_CATS.items()
+    ]
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="pf_cat:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def pf_note_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_PF_NOTE_SKIP)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def pf_date_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.BTN_PF_TODAY)],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
+        ],
+        resize_keyboard=True
+    )
+
+
+def pf_entries_kb(entries) -> InlineKeyboardMarkup:
+    """O'chirish uchun yozuvlar ro'yxati."""
+    rows = []
+    for e in entries:
+        cat_info = texts.PF_ALL_CATS.get(e["category"], ("📋", e["category"]))
+        emoji, name = cat_info
+        sign = "+" if e["entry_type"] == "income" else "-"
+        rows.append([InlineKeyboardButton(
+            text=f"{sign}{e['amount']:,} — {emoji}{name} ({e['entry_date'][5:]})",
+            callback_data=f"pf_del:{e['id']}"
+        )])
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="pf_del:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def finance_personal_cats_kb() -> InlineKeyboardMarkup:

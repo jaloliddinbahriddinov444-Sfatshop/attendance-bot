@@ -89,6 +89,14 @@ class EmpRateChange(StatesGroup):
     enter_rate = State()
 
 
+class PersonalFinance(StatesGroup):
+    choosing_category = State()
+    entering_amount = State()
+    entering_note = State()
+    entering_date = State()
+    deleting = State()
+
+
 class Broadcast(StatesGroup):
     target = State()
     choosing_employee = State()
