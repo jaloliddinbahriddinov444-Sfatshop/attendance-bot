@@ -1,6 +1,6 @@
 """Boss paneli: davomat ma'lumotlari, vazifa berish (admin'dan ulashilgan), moliya (Phase 4)."""
 import logging
-from aiogram import Router, F, Bot
+from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
@@ -50,8 +50,6 @@ async def boss_attendance(message: Message):
         return
 
     today_str = tz_now().strftime("%d.%m.%Y")
-    # Sarlavha + inline tugmalar (har xodim — bitta tugma)
-    lines = []
     rows = []
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     for emp in employees:
@@ -60,23 +58,18 @@ async def boss_attendance(message: Message):
             last = recs[-1]
             t = fmt_local(last["timestamp"], "%H:%M")
             if last["check_type"] == "in":
-                badge = "✅"
-                line = texts.BOSS_EMP_STATUS_IN.format(name=emp["full_name"], time=t)
+                btn_text = f"✅ {emp['full_name']} ({t})"
             else:
-                badge = "🔴"
-                line = texts.BOSS_EMP_STATUS_OUT.format(name=emp["full_name"], time=t)
+                btn_text = f"🔴 {emp['full_name']} ({t})"
         else:
-            badge = "❌"
-            line = texts.BOSS_EMP_STATUS_NONE.format(name=emp["full_name"])
-        lines.append(line)
+            btn_text = f"❌ {emp['full_name']}"
         rows.append([InlineKeyboardButton(
-            text=f"{badge} {emp['full_name']}",
+            text=btn_text,
             callback_data=f"boss_emp:{emp['id']}"
         )])
 
     await message.answer(
-        texts.BOSS_ATTENDANCE_HEADER.format(date=today_str) +
-        "\n\n" + "\n".join(lines),
+        texts.BOSS_ATTENDANCE_HEADER.format(date=today_str),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
@@ -104,6 +97,10 @@ async def boss_emp_detail(call: CallbackQuery):
         [InlineKeyboardButton(
             text="📥 Hodim ma'lumotlari excel hisoboti",
             callback_data=f"empdata_excel:{emp_id}"
+        )],
+        [InlineKeyboardButton(
+            text=texts.BTN_EMP_RATE_CHANGE,
+            callback_data=f"empdata_rate:{emp_id}"
         )],
     ])
     await call.message.edit_text(text, reply_markup=kb_inline)

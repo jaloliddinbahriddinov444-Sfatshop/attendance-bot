@@ -139,15 +139,6 @@ CARD_UPDATE_SUCCESS = (
     "💳 {card}"
 )
 
-# --- Eski xodimlarga bir martalik eslatma ---
-BROADCAST_CARD_NUDGE = (
-    "💳 <b>Hurmatli xodim, iltimos karta ma'lumotlaringizni qo'shing.</b>\n\n"
-    "👤 Profilim → 💳 Karta ma'lumotlari → raqamni kiriting.\n\n"
-    "<i>Eslatma:</i> ayni vaqtda o'zingiz ishlatib turgan, faol kartani kiriting — "
-    "ish haqqi aynan shu kartaga o'tkaziladi.\n\n"
-    "Format: <code>0000 1212 2412 3040 (ALIYEV KAMRON)</code>"
-)
-
 
 def format_card(number: str, holder: str = "") -> str:
     """Karta raqamini 4 talab ko'rsatish + qavsda egasi ismi.
@@ -497,6 +488,37 @@ ADMIN_ATT_RESET_DONE = (
 # ===== Ish haqqi =====
 BTN_SALARY = "💰 Ish haqqim"
 BTN_ADMIN_RATES = "💵 Stavkalarni belgilash"
+BTN_EMP_RATE_CHANGE = "💰 Hodim ish haqqini o'zgartirish"
+
+EMP_RATE_CHANGE_PROMPT = (
+    "💰 <b>{name}</b> — kunlik ish haqqini o'zgartirish\n\n"
+    "📋 Lavozim: <b>{position}</b>\n"
+    "⏱ Ish soati: <b>{hours} soat/kun</b>\n"
+    "📊 Tavsiya etilgan diapazon: <b>{min:,} – {max:,} so'm/kun</b>\n\n"
+    "Hozirgi stavka: <b>{current:,} so'm/kun</b>\n\n"
+    "Yangi kunlik stavkani kiriting (faqat son):"
+)
+
+EMP_RATE_CHANGE_NO_POSITION = (
+    "⚠️ <b>{name}</b> uchun lavozim hali belgilanmagan.\n\n"
+    "Avval <b>Lavozimlar → Xodimga lavozim berish</b> orqali lavozim belgilang."
+)
+
+EMP_RATE_CHANGE_INVALID = "❌ Iltimos, to'g'ri musbat son kiriting (masalan: <code>220000</code>)"
+
+EMP_RATE_CHANGE_SAVED = (
+    "✅ <b>{name}</b> ish haqqi yangilandi!\n\n"
+    "📋 Lavozim: <b>{position}</b>\n"
+    "💰 Yangi kunlik stavka: <b>{rate:,} so'm/kun</b>\n\n"
+    "<i>Joriy oy hisobi avtomatik qayta hisoblandi.</i>"
+)
+
+EMP_RATE_CHANGE_NOTIFY = (
+    "💰 <b>Kunlik ish haqqingiz yangilandi</b>\n\n"
+    "📋 Lavozim: <b>{position}</b>\n"
+    "💰 Yangi kunlik stavka: <b>{rate:,} so'm/kun</b>\n\n"
+    "<i>Joriy oy hisobi avtomatik ravishda yangi stavka asosida hisoblanadi.</i>"
+)
 
 SALARY_NO_RATE = (
     "💰 <b>Mening ish haqqim</b>\n\n"

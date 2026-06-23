@@ -176,36 +176,12 @@ def init_db():
                 "ALTER TABLE employees ADD COLUMN card_holder_name TEXT DEFAULT ''"
             )
 
-        # Migratsiya: finance_entries jadvali yo'q bo'lsa yaratish (belt-and-suspenders)
-        exists = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='finance_entries'"
-        ).fetchone()
-        if not exists:
-            conn.execute("""
-                CREATE TABLE finance_entries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    owner_id INTEGER NOT NULL,
-                    entry_type TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    amount INTEGER NOT NULL,
-                    note TEXT,
-                    linked_employee_id INTEGER,
-                    entry_date TIMESTAMP DEFAULT (datetime('now')),
-                    FOREIGN KEY (owner_id) REFERENCES employees (id) ON DELETE CASCADE,
-                    FOREIGN KEY (linked_employee_id) REFERENCES employees (id) ON DELETE SET NULL
-                )
-            """)
+        # Migratsiya: linked_employee_id ustuni yo'q bo'lsa qo'shish
+        fe_cols = [row[1] for row in conn.execute("PRAGMA table_info(finance_entries)").fetchall()]
+        if "linked_employee_id" not in fe_cols:
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_finance_owner_date "
-                "ON finance_entries(owner_id, entry_date)"
+                "ALTER TABLE finance_entries ADD COLUMN linked_employee_id INTEGER"
             )
-        else:
-            # Migratsiya: linked_employee_id ustuni yo'q bo'lsa qo'shish
-            fe_cols = [row[1] for row in conn.execute("PRAGMA table_info(finance_entries)").fetchall()]
-            if "linked_employee_id" not in fe_cols:
-                conn.execute(
-                    "ALTER TABLE finance_entries ADD COLUMN linked_employee_id INTEGER"
-                )
 
     # Lavozimlar tizimini yaratish
     init_positions()
@@ -449,23 +425,6 @@ def update_employee_profile(employee_id: int, full_name: str = None,
         )
 
 
-def get_employees_without_card():
-    """Broadcast uchun: faol, bog'langan (telegram_id>0), kartasi yo'q xodimlar."""
-    with get_db() as conn:
-        return conn.execute(
-            "SELECT * FROM employees WHERE is_active = 1 AND telegram_id > 0 "
-            "AND (card_number IS NULL OR card_number = '')"
-        ).fetchall()
-
-
-def is_card_announce_done() -> bool:
-    return get_setting("card_announce_done") == "1"
-
-
-def mark_card_announce_done():
-    set_setting("card_announce_done", "1")
-
-
 def get_all_employees(active_only=True):
     with get_db() as conn:
         if active_only:
@@ -554,16 +513,6 @@ def get_bosses():
             "ORDER BY full_name"
         ).fetchall()
 
-
-
-def get_employees_by_role(role: str):
-    """Berilgan roldagi barcha faol xodimlar."""
-    with get_db() as conn:
-        return conn.execute(
-            "SELECT * FROM employees WHERE role = ? AND is_active = 1 "
-            "ORDER BY full_name",
-            (role,)
-        ).fetchall()
 
 
 # ===== Davomat =====
@@ -1252,6 +1201,15 @@ def set_employee_position(employee_id: int, position_id: int, daily_rate: int):
         conn.execute(
             "UPDATE employees SET position_id=?, daily_rate=? WHERE id=?",
             (position_id, daily_rate, employee_id)
+        )
+
+
+def set_employee_daily_rate(employee_id: int, daily_rate: int):
+    """Faqat kunlik stavkani yangilash — lavozim o'zgarmaydi."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE employees SET daily_rate = ? WHERE id = ?",
+            (daily_rate, employee_id)
         )
 
 

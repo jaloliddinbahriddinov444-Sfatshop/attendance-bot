@@ -83,3 +83,7 @@ class EmployeePositionSet(StatesGroup):
     choose_employee = State()
     choose_position = State()
     enter_daily_rate = State()
+
+
+class EmpRateChange(StatesGroup):
+    enter_rate = State()

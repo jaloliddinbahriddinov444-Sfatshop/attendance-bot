@@ -5,19 +5,20 @@ import asyncio
 import calendar
 import logging
 from datetime import date as _date
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 
 import texts
 import keyboards as kb
+from states import EmpRateChange
 from tzutil import now as tz_now, to_local
 from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
     get_all_positions, get_position,
     get_monthly_attendance, get_monthly_worked_minutes, get_monthly_base_salary,
     get_active_salary_entries, get_salary_totals_by_type,
-    get_open_tasks_with_skips,
+    get_open_tasks_with_skips, set_employee_daily_rate,
 )
 
 logger = logging.getLogger(__name__)
@@ -496,6 +497,7 @@ async def emp_data_detail(call: CallbackQuery):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📥 Hodim ma'lumotlari excel hisoboti", callback_data=f"empdata_excel:{emp_id}")],
+        [InlineKeyboardButton(text=texts.BTN_EMP_RATE_CHANGE, callback_data=f"empdata_rate:{emp_id}")],
         [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"empdata_back_emp:{emp_id}")],
     ])
 
@@ -576,3 +578,94 @@ async def emp_excel_all(message: Message):
         BufferedInputFile(file_bytes, filename=fname),
         caption=f"📊 <b>Barcha xodimlar — {texts.MONTHS_UZ[month]} {year}</b>",
     )
+
+
+# ===== Xodim kunlik ish haqqini o'zgartirish =====
+
+@router.callback_query(F.data.startswith("empdata_rate:"))
+async def emp_rate_change_start(call: CallbackQuery, state: FSMContext):
+    if not _is_admin(call.from_user.id):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    emp_id = int(call.data.split(":")[1])
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    pos_id = emp["position_id"] if "position_id" in emp.keys() else None
+    daily_rate = (emp["daily_rate"] if "daily_rate" in emp.keys() else 0) or 0
+
+    if not pos_id:
+        await call.answer(
+            texts.EMP_RATE_CHANGE_NO_POSITION.format(name=emp["full_name"]),
+            show_alert=True
+        )
+        return
+
+    pos = get_position(pos_id)
+    await state.update_data(
+        rc_emp_id=emp_id,
+        rc_emp_name=emp["full_name"],
+        rc_emp_tg=emp["telegram_id"],
+        rc_pos_name=pos["name"] if pos else emp["position"],
+    )
+    await call.message.answer(
+        texts.EMP_RATE_CHANGE_PROMPT.format(
+            name=emp["full_name"],
+            position=pos["name"] if pos else emp["position"],
+            hours=pos["work_hours"] if pos else 9,
+            min=pos["min_rate"] if pos else 0,
+            max=pos["max_rate"] if pos else 0,
+            current=daily_rate,
+        ),
+        reply_markup=kb.cancel_kb()
+    )
+    await state.set_state(EmpRateChange.enter_rate)
+    await call.answer()
+
+
+@router.message(EmpRateChange.enter_rate, F.text)
+async def emp_rate_change_save(message: Message, state: FSMContext, bot: Bot):
+    if message.text == texts.BTN_CANCEL:
+        await state.clear()
+        await message.answer(texts.CANCELLED)
+        return
+
+    try:
+        cleaned = message.text.replace(" ", "").replace(",", "").replace(".", "").strip()
+        rate = int(cleaned)
+        if rate <= 0 or rate > 10_000_000:
+            raise ValueError()
+    except ValueError:
+        await message.answer(texts.EMP_RATE_CHANGE_INVALID)
+        return
+
+    data = await state.get_data()
+    emp_id = data["rc_emp_id"]
+    set_employee_daily_rate(emp_id, rate)
+    await state.clear()
+
+    now = tz_now()
+    logger.info("Daily rate changed: emp=%s rate=%s by tg=%s", emp_id, rate, message.from_user.id)
+
+    await message.answer(
+        texts.EMP_RATE_CHANGE_SAVED.format(
+            name=data["rc_emp_name"],
+            position=data["rc_pos_name"],
+            rate=rate,
+        )
+    )
+
+    if data.get("rc_emp_tg", 0) > 0:
+        try:
+            await bot.send_message(
+                data["rc_emp_tg"],
+                texts.EMP_RATE_CHANGE_NOTIFY.format(
+                    position=data["rc_pos_name"],
+                    rate=rate,
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.warning("Rate notify failed: tg=%s %s", data["rc_emp_tg"], e)

@@ -22,34 +22,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def send_card_announce_once(bot: Bot):
-    """Eski (deploydan oldin ro'yxatdan o'tgan) xodimlarga bir martalik
-    karta eslatmasini yuboradi. Flag 'settings' jadvalida saqlanadi —
-    qayta yuborilmaydi (Phase 4)."""
-    import texts
-    from database import (
-        is_card_announce_done, mark_card_announce_done,
-        get_employees_without_card,
-    )
-    if is_card_announce_done():
-        return
-    employees = get_employees_without_card()
-    if not employees:
-        mark_card_announce_done()
-        return
-    sent = failed = 0
-    for emp in employees:
-        try:
-            await bot.send_message(emp["telegram_id"], texts.BROADCAST_CARD_NUDGE)
-            sent += 1
-            await asyncio.sleep(0.05)  # rate-limit ehtiyot
-        except Exception as e:
-            logger.warning("Card announce failed tg=%s: %s", emp["telegram_id"], e)
-            failed += 1
-    mark_card_announce_done()
-    logger.info("Card announce: %d yuborildi, %d xato", sent, failed)
-
-
 async def main():
     # Bazani ishga tushirish
     init_db()
@@ -88,9 +60,6 @@ async def main():
 
     # Web serverni ishga tushirish (verify + face + setip)
     runner = await start_verify_server(bot)
-
-    # Phase 4 — eski xodimlarga bir martalik karta eslatmasi
-    await send_card_announce_once(bot)
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
