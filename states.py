@@ -91,16 +91,11 @@ class EmpRateChange(StatesGroup):
 
 class Broadcast(StatesGroup):
     target = State()
-    choosing_position = State()
     choosing_employee = State()
     content_type = State()
     entering_text = State()
     waiting_media = State()
-    entering_caption = State()
     poll_question = State()
     poll_options = State()
     confirming = State()
-
-
-class BroadcastComment(StatesGroup):
-    entering = State()
+    setup_chat = State()

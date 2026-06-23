@@ -613,8 +613,7 @@ def emp_in_position_kb(employees, pos_id: int) -> InlineKeyboardMarkup:
 
 def bc_target_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=texts.BC_BTN_ALL, callback_data="bc_target:all")],
-        [InlineKeyboardButton(text=texts.BC_BTN_BY_POS, callback_data="bc_target:pos")],
+        [InlineKeyboardButton(text=texts.BC_BTN_CHANNEL, callback_data="bc_target:channel")],
         [InlineKeyboardButton(text=texts.BC_BTN_ONE_EMP, callback_data="bc_target:emp")],
         [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")],
     ])
@@ -629,17 +628,6 @@ def bc_content_type_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=texts.BC_BTN_POLL, callback_data="bc_type:poll")],
         [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")],
     ])
-
-
-def bc_positions_kb(positions) -> InlineKeyboardMarkup:
-    rows = []
-    for pos in positions:
-        rows.append([InlineKeyboardButton(
-            text=f"💼 {pos['name']}",
-            callback_data=f"bc_pos:{pos['id']}"
-        )])
-    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="bc_cancel")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def bc_employees_kb(employees) -> InlineKeyboardMarkup:
@@ -660,14 +648,3 @@ def bc_confirm_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def bc_reaction_kb(broadcast_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👍", callback_data=f"bc_react:{broadcast_id}:👍"),
-            InlineKeyboardButton(text="❤️", callback_data=f"bc_react:{broadcast_id}:❤️"),
-            InlineKeyboardButton(text="😂", callback_data=f"bc_react:{broadcast_id}:😂"),
-            InlineKeyboardButton(text="😮", callback_data=f"bc_react:{broadcast_id}:😮"),
-            InlineKeyboardButton(text=texts.BC_COMMENT_BTN,
-                                 callback_data=f"bc_comment:{broadcast_id}"),
-        ]
-    ])

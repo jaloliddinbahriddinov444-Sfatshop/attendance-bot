@@ -1109,11 +1109,9 @@ BC_CHOOSE_TARGET = (
     "📢 <b>Xabarnoma yuborish</b>\n\n"
     "Xabar kimga yuborilsin?"
 )
-BC_BTN_ALL = "👥 Barcha xodimlar"
-BC_BTN_BY_POS = "💼 Lavozim bo'yicha"
-BC_BTN_ONE_EMP = "👤 Alohida xodim"
+BC_BTN_CHANNEL = "📢 Kanal / Guruhga"
+BC_BTN_ONE_EMP = "👤 Alohida xodimga DM"
 
-BC_CHOOSE_POS = "💼 Lavozimni tanlang:"
 BC_CHOOSE_EMP = "👤 Xodimni tanlang:"
 
 BC_CHOOSE_CONTENT = "📨 <b>Xabar turini tanlang:</b>"
@@ -1137,27 +1135,42 @@ BC_POLL_OPTIONS = (
 BC_POLL_MIN_OPTIONS = "❌ Kamida <b>2 ta</b> variant kerak."
 BC_POLL_MAX_OPTIONS = "❌ Ko'pi bilan <b>10 ta</b> variant bo'lishi mumkin."
 
-BC_CONFIRM = (
+BC_CONFIRM_CHANNEL = (
     "✅ <b>Yuborishni tasdiqlaysizmi?</b>\n\n"
-    "👥 Kimga: <b>{target}</b>\n"
+    "📢 Kanal: <b>{chat_title}</b>\n"
+    "📨 Tur: <b>{ctype}</b>"
+)
+BC_CONFIRM_DM = (
+    "✅ <b>Yuborishni tasdiqlaysizmi?</b>\n\n"
+    "👤 Xodim: <b>{emp_name}</b>\n"
     "📨 Tur: <b>{ctype}</b>"
 )
 BC_BTN_SEND = "✅ Ha, yuborish"
 BC_BTN_CANCEL = "❌ Bekor"
 BC_SENDING = "⏳ Yuborilmoqda..."
-BC_DONE = "✅ Xabar <b>{sent}</b> nafar xodimga yuborildi."
+BC_DONE_CHANNEL = "✅ Xabar kanalga yuborildi."
+BC_DONE_DM = "✅ Xabar <b>{name}</b>ga yuborildi."
 BC_NO_RECIPIENTS = "❌ Yuborish uchun hech kim topilmadi."
 
-BC_HEADER = "📢 <b>{sender}</b> xabari:"
-
-BC_REACT_SAVED = "Reaksiya qabul qilindi!"
-BC_COMMENT_BTN = "✏️ Izoh yozish"
-BC_COMMENT_ASK = (
-    "✏️ <b>Izohingizni yozing:</b>\n\n"
-    "<i>Xabar jo'natuvchiga yuboriladi.</i>"
+# Kanal sozlamalari
+BC_NO_CHAT = (
+    "⚠️ <b>Kanal/guruh hali sozlanmagan.</b>\n\n"
+    "Sozlash uchun:\n"
+    "1. Botni kanalingizga <b>admin</b> sifatida qo'shing\n"
+    "2. Quyida kanal username'ini yozing:\n"
+    "   <code>@kanalingiz</code>\n"
+    "   yoki kanal ID'sini yozing:\n"
+    "   <code>-1001234567890</code>\n\n"
+    "<i>Yoki kanaldan istalgan xabarni bu yerga <b>forward</b> qiling.</i>"
 )
-BC_COMMENT_SENT = "✅ Izohingiz yuborildi."
-BC_COMMENT_FORWARD = (
-    "💬 <b>{emp_name}</b> izoh yozdi:\n\n"
-    "{comment}"
+BC_CHAT_CHECKING = "⏳ Kanal tekshirilmoqda..."
+BC_CHAT_SAVED = (
+    "✅ <b>Kanal muvaffaqiyatli sozlandi!</b>\n\n"
+    "📢 Kanal: <b>{title}</b>\n"
+    "🆔 ID: <code>{chat_id}</code>"
+)
+BC_CHAT_ERROR = (
+    "❌ Kanal topilmadi yoki bot admin emas.\n\n"
+    "Botni kanalga <b>admin</b> sifatida qo'shganingizni tekshiring, "
+    "so'ng qaytadan urinib ko'ring."
 )
