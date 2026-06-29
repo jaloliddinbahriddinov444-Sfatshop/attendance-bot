@@ -172,10 +172,16 @@ document.getElementById('cameraInput').addEventListener('change', async (e) => {
     document.getElementById('captureSection').style.display = 'none';
     document.getElementById('loadingSection').className = 'loading show';
 
+    // Rasmni browserda kichraytirib JPEG ga aylantirish (tez upload, HEIC muammosi yoʻq)
+    let uploadBlob = file;
+    try {{
+        uploadBlob = await resizeImage(file, 1000, 0.85);
+    }} catch (err) {{ uploadBlob = file; }}
+
     // Serverga yuklash
     try {{
         const formData = new FormData();
-        formData.append('photo', file);
+        formData.append('photo', uploadBlob, 'selfie.jpg');
 
         const resp = await fetch('/verify/' + TOKEN + '/upload', {{
             method: 'POST',
@@ -201,6 +207,27 @@ function showError(msg) {{
     document.getElementById('errorResult').className = 'result error';
     document.getElementById('captureSection').style.display = 'none';
     document.getElementById('loadingSection').className = 'loading';
+}}
+
+function resizeImage(file, maxSize, quality) {{
+    return new Promise((resolve, reject) => {{
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {{
+            URL.revokeObjectURL(url);
+            let w = img.width, h = img.height;
+            if (Math.max(w, h) > maxSize) {{
+                if (w >= h) {{ h = Math.round(h * maxSize / w); w = maxSize; }}
+                else {{ w = Math.round(w * maxSize / h); h = maxSize; }}
+            }}
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob')), 'image/jpeg', quality);
+        }};
+        img.onerror = () => {{ URL.revokeObjectURL(url); reject(new Error('imgload')); }};
+        img.src = url;
+    }});
 }}
 </script>
 </body>

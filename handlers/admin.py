@@ -5,9 +5,8 @@ import logging
 from datetime import datetime
 from tzutil import now as tz_now, to_local
 from aiogram import Router, F, Bot
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 import texts
 import keyboards as kb
@@ -392,24 +391,6 @@ async def admin_today(message: Message):
                 text += texts.ADMIN_TODAY_ITEM_ABSENT.format(name=rec["full_name"])
 
     await message.answer(text)
-
-
-# ===== VAQTINCHALIK: bazani yuklab olish (migratsiya uchun) =====
-
-@router.message(Command("getdb"))
-async def getdb_temp(message: Message):
-    """Vaqtinchalik: faqat bosh admin uchun — attendance.db faylini yuboradi.
-    Migratsiyadan keyin bu funksiyani o'chirib tashlash kerak."""
-    from config import INITIAL_ADMIN_ID, DB_PATH
-    if message.from_user.id != INITIAL_ADMIN_ID:
-        return
-    try:
-        await message.answer_document(
-            FSInputFile(str(DB_PATH)),
-            caption="🗄 attendance.db — vaqtinchalik export (migratsiya uchun)"
-        )
-    except Exception as e:
-        await message.answer(f"❌ Xato: {e}")
 
 
 # ===== Excel hisobot =====
