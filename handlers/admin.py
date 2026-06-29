@@ -1564,9 +1564,9 @@ def _parse_deadline(text: str):
             continue
     if parsed is None:
         return None
-    # Local Tashkent -> UTC saqlash
+    # Local Tashkent -> UTC saqlash (bo'sh joyli format — datetime('now') bilan bir xil)
     from tzutil import OFFSET
-    return (parsed - OFFSET).isoformat()
+    return (parsed - OFFSET).isoformat(sep=' ')
 
 
 @router.message(TaskCreate.entering_deadline, F.text)

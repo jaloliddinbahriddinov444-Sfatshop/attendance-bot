@@ -564,7 +564,7 @@ def get_today_attendance(employee_id: int):
         return conn.execute(
             "SELECT * FROM attendance WHERE employee_id = ? "
             "AND date(timestamp, '+5 hours') = date('now', '+5 hours') "
-            "ORDER BY timestamp",
+            "ORDER BY datetime(timestamp)",
             (employee_id,)
         ).fetchall()
 
@@ -653,7 +653,7 @@ def get_day_attendance(employee_id: int, date_local: str):
             "SELECT id, check_type, timestamp FROM attendance "
             "WHERE employee_id = ? "
             "AND date(timestamp, '+5 hours') = ? "
-            "ORDER BY timestamp ASC",
+            "ORDER BY datetime(timestamp) ASC",
             (employee_id, date_local)
         ).fetchall()
 
@@ -689,7 +689,7 @@ def add_manual_attendance(employee_id: int, check_type: str, time_str: str,
             "INSERT INTO attendance (employee_id, check_type, timestamp, "
             "wifi_name, wifi_match, face_match_score) "
             "VALUES (?, ?, ?, ?, 1, 1.0)",
-            (employee_id, check_type, ts.isoformat(), "Admin qo'shdi")
+            (employee_id, check_type, ts.isoformat(sep=' '), "Admin qo'shdi")
         )
 
 
