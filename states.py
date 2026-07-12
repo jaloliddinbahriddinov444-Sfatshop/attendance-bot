@@ -95,6 +95,12 @@ class FinanceCategoryManage(StatesGroup):
     waiting_name = State()
 
 
+class PFCategoryManage(StatesGroup):
+    choose_type = State()
+    waiting_emoji = State()
+    waiting_name = State()
+
+
 class PersonalFinance(StatesGroup):
     choosing_category = State()
     entering_amount = State()

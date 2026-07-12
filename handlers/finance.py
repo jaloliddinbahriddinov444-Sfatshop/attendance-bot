@@ -31,6 +31,7 @@ from database import (
     delete_finance_entry,
     get_finance_balance,
     get_finance_balance_before,
+    get_today_finance_summary,
     finance_category_label,
     ensure_owner_categories,
 )
@@ -551,6 +552,7 @@ async def finance_summary(message: Message):
 
     if not summary["by_category"]["income"] and not summary["by_category"]["expense"]:
         out += texts.FINANCE_SUMMARY_EMPTY
+        out += texts.FINANCE_SUMMARY_TODAY_EMPTY
         out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
         await message.answer(out)
         return
@@ -580,6 +582,30 @@ async def finance_summary(message: Message):
         out += texts.FINANCE_SUMMARY_NET_NEG.format(net=net)
     else:
         out += texts.FINANCE_SUMMARY_NET_ZERO
+
+    # Bugungi kun bloki
+    today = get_today_finance_summary(me["id"], now.strftime("%Y-%m-%d"))
+    date_lbl = now.strftime("%d.%m")
+    if today["cnt"] == 0:
+        out += texts.FINANCE_SUMMARY_TODAY_EMPTY
+    else:
+        if today["expense_cnt"]:
+            out += texts.FINANCE_SUMMARY_TODAY.format(
+                date=date_lbl, total=today["expense_total"],
+                cnt=today["expense_cnt"]
+            )
+            for r in today["by_category"]["expense"]:
+                emoji, name = (finance_category_label(r["category"])
+                               or ("📋", r["category"]))
+                out += texts.FINANCE_SUMMARY_TODAY_CAT.format(
+                    emoji=emoji, category=name, total=r["total"]
+                )
+        else:
+            out += texts.FINANCE_SUMMARY_TODAY_NO_EXPENSE.format(date=date_lbl)
+        if today["income_total"]:
+            out += texts.FINANCE_SUMMARY_TODAY_INCOME.format(
+                total=today["income_total"]
+            )
 
     out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
     await message.answer(out)

@@ -7,6 +7,7 @@ import texts
 from database import (
     get_finance_categories, get_finance_personal_categories,
     finance_category_label,
+    get_pf_categories, pf_category_label,
 )
 
 
@@ -406,19 +407,21 @@ def pf_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=texts.BTN_PF_SUMMARY),
              KeyboardButton(text=texts.BTN_PF_EXCEL)],
             [KeyboardButton(text=texts.BTN_PF_DELETE)],
+            [KeyboardButton(text=texts.BTN_PF_CATEGORIES)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
         resize_keyboard=True
     )
 
 
-def pf_income_cats_kb() -> InlineKeyboardMarkup:
+def pf_income_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
+    """PF kirim turkumlari — egaga tegishli ro'yxat (bazadan)."""
     rows = [
         [InlineKeyboardButton(
-            text=f"{emoji} {name}",
-            callback_data=f"pf_cat:income:{key}"
+            text=f"{cat['emoji']} {cat['name']}",
+            callback_data=f"pf_cat:income:{cat['ckey']}"
         )]
-        for key, (emoji, name) in texts.PF_INCOME_CATS.items()
+        for cat in get_pf_categories("income", owner_id)
     ]
     rows.append([InlineKeyboardButton(
         text=texts.BTN_CANCEL, callback_data="pf_cat:cancel"
@@ -426,13 +429,14 @@ def pf_income_cats_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def pf_expense_cats_kb() -> InlineKeyboardMarkup:
+def pf_expense_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
+    """PF chiqim turkumlari — egaga tegishli ro'yxat (bazadan)."""
     rows = [
         [InlineKeyboardButton(
-            text=f"{emoji} {name}",
-            callback_data=f"pf_cat:expense:{key}"
+            text=f"{cat['emoji']} {cat['name']}",
+            callback_data=f"pf_cat:expense:{cat['ckey']}"
         )]
-        for key, (emoji, name) in texts.PF_EXPENSE_CATS.items()
+        for cat in get_pf_categories("expense", owner_id)
     ]
     rows.append([InlineKeyboardButton(
         text=texts.BTN_CANCEL, callback_data="pf_cat:cancel"
@@ -464,8 +468,8 @@ def pf_entries_kb(entries) -> InlineKeyboardMarkup:
     """O'chirish uchun yozuvlar ro'yxati (bir kun ichidagi — izoh bilan farqlanadi)."""
     rows = []
     for e in entries:
-        cat_info = texts.PF_ALL_CATS.get(e["category"], ("📋", e["category"]))
-        emoji, name = cat_info
+        emoji, name = (pf_category_label(e["category"])
+                       or texts.PF_ALL_CATS.get(e["category"], ("📋", e["category"])))
         sign = "➕" if e["entry_type"] == "income" else "➖"
         note = (e["note"] or "").strip()
         extra = f" · {note[:16]}" if note else ""

@@ -231,6 +231,9 @@ def init_db():
     # Moliya turkumlari tizimini yaratish
     init_finance_categories()
 
+    # Shaxsiy moliya (PF) turkumlari tizimini yaratish
+    init_pf_categories()
+
     # Referens qurilmalar (beacon) tizimini yaratish
     init_beacon_devices()
 
@@ -1328,6 +1331,42 @@ def get_monthly_finance_summary(owner_id: int, year: int, month: int):
     }
 
 
+def get_today_finance_summary(owner_id: int, date_str: str) -> dict:
+    """Bugungi kun xulosasi (Toshkent vaqti, 'YYYY-MM-DD')."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT entry_type, category, SUM(amount) AS total, COUNT(*) AS cnt
+            FROM finance_entries
+            WHERE owner_id = ?
+              AND date(entry_date, '+5 hours') = ?
+            GROUP BY entry_type, category
+            ORDER BY entry_type, total DESC
+            """,
+            (owner_id, date_str)
+        ).fetchall()
+    income_total = 0
+    expense_total = 0
+    expense_cnt = 0
+    cnt = 0
+    by_cat = {"income": [], "expense": []}
+    for r in rows:
+        cnt += r["cnt"]
+        if r["entry_type"] == "income":
+            income_total += r["total"]
+        else:
+            expense_total += r["total"]
+            expense_cnt += r["cnt"]
+        by_cat[r["entry_type"]].append(dict(r))
+    return {
+        "income_total": income_total,
+        "expense_total": expense_total,
+        "expense_cnt": expense_cnt,
+        "cnt": cnt,
+        "by_category": by_cat,
+    }
+
+
 # ===== Moliya turkumlari (kategoriya) tizimi =====
 
 # Seed: (entry_type, ckey, emoji, name, protected, is_personal)
@@ -1512,6 +1551,150 @@ def delete_finance_category(cat_id: int, owner_id: int) -> bool:
     with get_db() as conn:
         cur = conn.execute(
             "UPDATE finance_categories SET is_active = 0 "
+            "WHERE id = ? AND owner_id = ? AND protected = 0 AND is_active = 1",
+            (cat_id, owner_id)
+        )
+        return cur.rowcount > 0
+
+
+# ===== Shaxsiy moliya (PF) turkumlari tizimi =====
+# finance_categories bilan bir xil naqsh: har egaga alohida, ckey barqaror,
+# custom turkumlar ckey='c{id}', yumshoq o'chirish.
+
+# Seed: (entry_type, ckey, emoji, name) — texts.PF_*_CATS lug'atlari asosida.
+# Hech bir PF kalitiga kod mantig'i bog'lanmagan — hammasi himoyalanmagan.
+_PF_CATEGORY_SEED = [
+    # Chiqim (expense)
+    ("expense", "subscription",  "📱", "Oylik obuna"),
+    ("expense", "transport",     "🚗", "Yo'lkira"),
+    ("expense", "food",          "🍽", "Ovqat"),
+    ("expense", "entertainment", "🎮", "Ko'ngil ochar"),
+    ("expense", "debt_pay",      "💸", "Qarz to'lash"),
+    ("expense", "charity",       "🤲", "Ehson va hadiya"),
+    ("expense", "clothing",      "👕", "Kiyim-kechak"),
+    ("expense", "shopping",      "🛒", "Xarid"),
+    ("expense", "pf_other",      "📋", "Boshqa"),
+    # Kirim (income)
+    ("income", "salary",       "💵", "Ish haqqi"),
+    ("income", "daily_income", "📈", "Kunlik daromad"),
+    ("income", "loan_in",      "🤝", "Qarz olish"),
+    ("income", "pf_inc_other", "📋", "Boshqa"),
+]
+
+_PFCAT_CREATE_SQL = """
+    CREATE TABLE IF NOT EXISTS pf_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER NOT NULL,
+        entry_type TEXT NOT NULL,
+        ckey TEXT NOT NULL,
+        emoji TEXT DEFAULT '🏷',
+        name TEXT NOT NULL,
+        protected INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT (datetime('now')),
+        UNIQUE(owner_id, entry_type, ckey)
+    )
+"""
+
+
+def _seed_owner_pf_categories(conn, owner_id: int):
+    for entry_type, ckey, emoji, name in _PF_CATEGORY_SEED:
+        conn.execute(
+            "INSERT OR IGNORE INTO pf_categories "
+            "(owner_id, entry_type, ckey, emoji, name) "
+            "VALUES (?,?,?,?,?)",
+            (owner_id, entry_type, ckey, emoji, name)
+        )
+
+
+def init_pf_categories():
+    """pf_categories — yaratish va har egaga default seed (idempotent)."""
+    with get_db() as conn:
+        conn.execute(_PFCAT_CREATE_SQL)
+        for oid in _finance_owner_ids(conn):
+            _seed_owner_pf_categories(conn, oid)
+
+
+def ensure_owner_pf_categories(owner_id: int):
+    """Egada birorta PF turkumi bo'lmasa — default to'plamni yaratadi."""
+    with get_db() as conn:
+        cnt = conn.execute(
+            "SELECT COUNT(*) AS c FROM pf_categories WHERE owner_id = ?", (owner_id,)
+        ).fetchone()["c"]
+        if cnt == 0:
+            _seed_owner_pf_categories(conn, owner_id)
+
+
+def get_pf_categories(entry_type: str, owner_id: int, active_only: bool = True):
+    """Tanlov klaviaturasi uchun — egaga tegishli PF turkumlari."""
+    q = "SELECT * FROM pf_categories WHERE owner_id = ? AND entry_type = ?"
+    if active_only:
+        q += " AND is_active = 1"
+    q += " ORDER BY id"
+    with get_db() as conn:
+        return conn.execute(q, (owner_id, entry_type)).fetchall()
+
+
+def get_all_pf_categories(owner_id: int, active_only: bool = True):
+    """Boshqaruv menyusi uchun — egaga tegishli barcha PF turkumlari."""
+    q = "SELECT * FROM pf_categories WHERE owner_id = ?"
+    if active_only:
+        q += " AND is_active = 1"
+    q += " ORDER BY entry_type, id"
+    with get_db() as conn:
+        return conn.execute(q, (owner_id,)).fetchall()
+
+
+def get_pf_category(cat_id: int):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM pf_categories WHERE id = ?", (cat_id,)
+        ).fetchone()
+
+
+def get_pf_category_by_ckey(owner_id: int, entry_type: str, ckey: str):
+    """Tanlovni tekshirish uchun — faqat egaga tegishli AKTIV turkum."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM pf_categories "
+            "WHERE owner_id = ? AND entry_type = ? AND ckey = ? AND is_active = 1",
+            (owner_id, entry_type, ckey)
+        ).fetchone()
+
+
+def pf_category_label(ckey: str):
+    """PF turkum kaliti bo'yicha (emoji, nom). Faolsizlar ham topiladi —
+    eski yozuvlar nomini yo'qotmaydi. Topilmasa — None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT emoji, name FROM pf_categories WHERE ckey = ? "
+            "ORDER BY is_active DESC LIMIT 1",
+            (ckey,)
+        ).fetchone()
+    return (row["emoji"], row["name"]) if row else None
+
+
+def create_pf_category(entry_type: str, emoji: str, name: str, owner_id: int) -> int:
+    """Egaga yangi PF turkumi. Barqaror ckey = 'c{id}' beriladi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO pf_categories (owner_id, entry_type, ckey, emoji, name) "
+            "VALUES (?, ?, '', ?, ?)",
+            (owner_id, entry_type, emoji, name)
+        )
+        cid = cur.lastrowid
+        conn.execute(
+            "UPDATE pf_categories SET ckey = ? WHERE id = ?",
+            (f"c{cid}", cid)
+        )
+        return cid
+
+
+def delete_pf_category(cat_id: int, owner_id: int) -> bool:
+    """Yumshoq o'chirish (is_active=0). Faqat egasining turkumi. Tarix saqlanadi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE pf_categories SET is_active = 0 "
             "WHERE id = ? AND owner_id = ? AND protected = 0 AND is_active = 1",
             (cat_id, owner_id)
         )
@@ -1756,6 +1939,23 @@ def pf_get_summary(employee_id: int, year: int, month: int) -> dict:
         "net": income_total - expense_total,
         "by_cat": by_cat,
     }
+
+
+def pf_get_today_totals(employee_id: int, date_str: str) -> dict:
+    """Bugungi kirim/chiqim jami (entry_date lokal 'YYYY-MM-DD' string)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT entry_type, SUM(amount) AS total, COUNT(*) AS cnt "
+            "FROM personal_finance "
+            "WHERE employee_id = ? AND entry_date = ? "
+            "GROUP BY entry_type",
+            (employee_id, date_str)
+        ).fetchall()
+    result = {"income": 0, "expense": 0, "cnt": 0}
+    for r in rows:
+        result[r["entry_type"]] = r["total"]
+        result["cnt"] += r["cnt"]
+    return result
 
 
 def pf_get_entry(entry_id: int, employee_id: int):
