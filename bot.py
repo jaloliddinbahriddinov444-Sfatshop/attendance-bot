@@ -1,5 +1,6 @@
 """Davomat boti - asosiy fayl (Render mosligi)"""
 import asyncio
+import contextlib
 import logging
 
 from aiogram import Bot, Dispatcher
@@ -10,9 +11,10 @@ from aiogram.enums import ParseMode
 from config import BOT_TOKEN, PUBLIC_URL, OFFICE_PUBLIC_IPS, DB_PATH
 from database import init_db
 from services.wifi_verify import start_verify_server
+from services.reminders import reminders_loop
 
 # Handlerlar
-from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler, fin_categories as fin_categories_handler, emp_data as emp_data_handler, broadcast as broadcast_handler, personal_finance as pf_handler, pf_categories as pf_categories_handler
+from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler, fin_categories as fin_categories_handler, emp_data as emp_data_handler, broadcast as broadcast_handler, personal_finance as pf_handler, pf_categories as pf_categories_handler, fix_requests as fix_requests_handler
 
 
 logging.basicConfig(
@@ -56,19 +58,26 @@ async def main():
         broadcast_handler.router,
         pf_handler.router,
         pf_categories_handler.router,
+        fix_requests_handler.router,
         common.router,
     )
 
     me = await bot.get_me()
     logger.info("🤖 Bot ishga tushdi: @%s (id=%s)", me.username, me.id)
 
-    # Web serverni ishga tushirish (verify + face + setip)
+    # Web serverni ishga tushirish (verify + face + setip + dashboard)
     runner = await start_verify_server(bot)
+
+    # Avtomatik eslatmalar — polling bilan parallel background task
+    reminder_task = asyncio.create_task(reminders_loop(bot))
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        reminder_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reminder_task
         await runner.cleanup()
 
 

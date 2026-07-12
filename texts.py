@@ -1409,3 +1409,127 @@ BC_CHAT_ERROR = (
     "Botni kanalga <b>admin</b> sifatida qo'shganingizni tekshiring, "
     "so'ng qaytadan urinib ko'ring."
 )
+
+
+# ===== Web dashboard =====
+BTN_WEB_DASHBOARD = "🖥 Web Dashboard"
+
+DASHBOARD_LINK_TEXT = (
+    "🖥 <b>Web Dashboard</b>\n\n"
+    "Brauzerda jonli davomat ko'rinishi — kim ishda, kim kelmagan, "
+    "kechikishlar va oylik jamlanma.\n\n"
+    "⚠️ <b>Diqqat:</b> havolada maxfiy kalit bor — begonalarga bermang!"
+)
+BTN_DASHBOARD_OPEN = "🖥 Dashboardni ochish"
+DASHBOARD_NOT_CONFIGURED = (
+    "⚠️ Dashboard sozlanmagan.\n\n"
+    ".env faylida <code>PUBLIC_URL</code> va <code>DASHBOARD_API_KEY</code> "
+    "to'ldirilishi kerak, so'ng bot qayta ishga tushiriladi."
+)
+
+
+# ===== Davomat tuzatish so'rovlari =====
+BTN_FIX_REQUEST = "✏️ Davomatni tuzatish so'rovi"
+BTN_FIX_REQUESTS_ADMIN = "📨 Tuzatish so'rovlari"
+
+FIXREQ_PICK_DAY = (
+    "✏️ <b>Davomatni tuzatish so'rovi</b>\n\n"
+    "Qaysi kun uchun tuzatish so'raysiz? (oxirgi 7 kun)"
+)
+FIXREQ_PICK_TYPE = (
+    "📅 Tanlangan kun: <b>{date}</b>\n\n"
+    "Muammo turini tanlang:"
+)
+FIXREQ_TYPE_IN = "🟢 Keldim vaqti noto'g'ri/yo'q"
+FIXREQ_TYPE_OUT = "🔴 Ketdim vaqti noto'g'ri/yo'q"
+FIXREQ_TYPE_BOTH = "🟢🔴 Ikkalasi"
+FIXREQ_ASK_TIME_IN = (
+    "🟢 To'g'ri <b>kelgan</b> vaqtingizni yozing (Toshkent vaqti):\n\n"
+    "<i>Misol: 09:00</i>"
+)
+FIXREQ_ASK_TIME_OUT = (
+    "🔴 To'g'ri <b>ketgan</b> vaqtingizni yozing (Toshkent vaqti):\n\n"
+    "<i>Misol: 18:00</i>"
+)
+FIXREQ_INVALID_TIME = "❌ Vaqt formati noto'g'ri. HH:MM ko'rinishida yozing (masalan 09:30)."
+FIXREQ_OUT_BEFORE_IN = "❌ Ketish vaqti kelish vaqtidan keyin bo'lishi kerak."
+FIXREQ_ASK_REASON = (
+    "📝 Sababini yozing (majburiy, kamida 5 ta belgi):\n\n"
+    "<i>Misol: Telefonim o'chib qolgan edi, davomat belgilay olmadim</i>"
+)
+FIXREQ_REASON_TOO_SHORT = "❌ Sabab juda qisqa. Kamida 5 ta belgi yozing."
+FIXREQ_CONFIRM = (
+    "❓ <b>So'rovni tasdiqlang</b>\n\n"
+    "📅 Kun: <b>{date}</b>\n"
+    "✏️ Tur: {type}\n"
+    "{times}"
+    "📝 Sabab: <i>{reason}</i>\n\n"
+    "Adminlarga yuborilsinmi?"
+)
+FIXREQ_SENT = (
+    "✅ So'rovingiz adminlarga yuborildi.\n\n"
+    "Ko'rib chiqilgach natija haqida xabar olasiz."
+)
+FIXREQ_LIMIT_DAY = "❌ Kuniga ko'pi bilan 3 ta so'rov yuborish mumkin."
+FIXREQ_ALREADY_PENDING = "⚠️ Bu kun uchun so'rovingiz allaqachon ko'rib chiqilmoqda."
+FIXREQ_MONTH_CLOSED = "🔒 Bu oy yopilgan — tuzatish mumkin emas."
+FIXREQ_ADMIN_NOTIFY = (
+    "📨 <b>Davomatni tuzatish so'rovi</b> (#{req_id})\n\n"
+    "👤 Xodim: <b>{name}</b>\n"
+    "📅 Kun: <b>{date}</b>\n"
+    "✏️ Tur: {type}\n"
+    "{times}"
+    "📝 Sabab: <i>{reason}</i>\n\n"
+    "📋 Kunning joriy yozuvlari:\n{current}"
+)
+FIXREQ_NO_RECORDS = "   (yozuv yo'q)"
+FIXREQ_BTN_APPROVE = "✅ Tasdiqlash"
+FIXREQ_BTN_REJECT = "❌ Rad etish"
+FIXREQ_NO_PENDING = "📭 Kutilayotgan tuzatish so'rovlari yo'q."
+FIXREQ_PENDING_HEADER = "📨 <b>Kutilayotgan so'rovlar:</b> {count} ta"
+FIXREQ_ALREADY_REVIEWED = "⚠️ Bu so'rov allaqachon ko'rib chiqilgan."
+FIXREQ_REJECT_ASK_COMMENT = (
+    "❌ Rad etish sababi (xodimga yuboriladi).\n\n"
+    "Izoh yozing yoki izohsiz rad etish uchun <b>-</b> yuboring:"
+)
+FIXREQ_APPROVED_ADMIN = "\n\n✅ <b>{admin}</b> tasdiqladi"
+FIXREQ_REJECTED_ADMIN = "\n\n❌ <b>{admin}</b> rad etdi"
+FIXREQ_REJECT_DONE = "❌ So'rov rad etildi. Xodimga xabar yuborildi."
+FIXREQ_APPLY_ERROR = "⚠️ Davomatni yangilashda xato yuz berdi. Loglarni tekshiring."
+FIXREQ_APPROVED_EMP = (
+    "✅ <b>Tuzatish so'rovingiz tasdiqlandi</b>\n\n"
+    "📅 Kun: <b>{date}</b>\n"
+    "{times}"
+    "Davomatingiz yangilandi."
+)
+FIXREQ_REJECTED_EMP = (
+    "❌ <b>Tuzatish so'rovingiz rad etildi</b>\n\n"
+    "📅 Kun: <b>{date}</b>\n"
+    "{comment}"
+)
+FIXREQ_REJECT_COMMENT_LINE = "📝 Izoh: <i>{comment}</i>"
+FIXREQ_TIME_IN_LINE = "🟢 Kelish: <b>{time}</b>\n"
+FIXREQ_TIME_OUT_LINE = "🔴 Ketish: <b>{time}</b>\n"
+
+
+# ===== Avtomatik eslatmalar =====
+BTN_REMINDERS = "🔔 Eslatmalar"
+
+REMINDERS_ON = "🔔 Eslatmalar <b>yoqildi</b>.\n\nXodimlarga avtomatik eslatma yuboriladi."
+REMINDERS_OFF = "🔕 Eslatmalar <b>o'chirildi</b>.\n\nHech qanday eslatma yuborilmaydi."
+
+REMIND_PRE_START = (
+    "⏰ Ish <b>{work_start}</b> da boshlanadi — "
+    "kelganingizda davomatni belgilashni unutmang!"
+)
+REMIND_LATE = (
+    "⚠️ Siz hali davomat belgilamadingiz.\n\n"
+    "Ishxonada bo'lsangiz <b>Keldim</b> tugmasini bosing."
+)
+REMIND_FORGOT_OUT = (
+    "🌙 Ish vaqti tugadi — <b>Ketdim</b> ni belgilashni unutmang."
+)
+REMIND_ADMIN_SUMMARY = (
+    "⚠️ <b>Davomat belgilamaganlar</b> ({time} holatiga):\n\n"
+    "{names}"
+)

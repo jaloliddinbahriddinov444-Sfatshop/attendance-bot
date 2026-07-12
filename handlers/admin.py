@@ -27,8 +27,9 @@ from database import (
     create_task, set_role, get_boss, get_bosses,
     find_employee_by_phone, create_pending_employee,
     update_employee_profile, reactivate_employee, phone_key,
+    get_setting,
 )
-from config import MAX_EMPLOYEES
+from config import MAX_EMPLOYEES, PUBLIC_URL, DASHBOARD_API_KEY
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -126,6 +127,41 @@ async def grp_back_to_panel(message: Message, state: FSMContext):
         return
     await state.clear()
     await message.answer(texts.ADMIN_MENU, reply_markup=_admin_kb(message))
+
+
+# ===== Web dashboard (Bosh Admin) =====
+
+@router.message(F.text == texts.BTN_WEB_DASHBOARD)
+async def web_dashboard_link(message: Message):
+    if not _is_bosh_admin(message):
+        return
+    if not PUBLIC_URL or not DASHBOARD_API_KEY:
+        await message.answer(texts.DASHBOARD_NOT_CONFIGURED)
+        return
+    url = f"{PUBLIC_URL.rstrip('/')}/dashboard?key={DASHBOARD_API_KEY}"
+    await message.answer(
+        texts.DASHBOARD_LINK_TEXT,
+        reply_markup=kb.dashboard_link_kb(url),
+    )
+
+
+# ===== Eslatmalarni yoqish/o'chirish (Bosh Admin) =====
+
+@router.message(F.text == texts.BTN_REMINDERS)
+async def toggle_reminders(message: Message):
+    if not _is_bosh_admin(message):
+        return
+    current = get_setting("reminders_enabled", "1")
+    new_value = "0" if current == "1" else "1"
+    set_setting("reminders_enabled", new_value)
+    logger.info(
+        "Eslatmalar %s (admin: %s)",
+        "yoqildi" if new_value == "1" else "o'chirildi",
+        message.from_user.id,
+    )
+    await message.answer(
+        texts.REMINDERS_ON if new_value == "1" else texts.REMINDERS_OFF
+    )
 
 
 # ===== Phase 4: Admin xodim qo'shish (oldindan) =====

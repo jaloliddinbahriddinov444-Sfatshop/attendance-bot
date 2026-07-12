@@ -183,6 +183,32 @@ def init_db():
             FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS attendance_fix_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            target_date TEXT NOT NULL,
+            request_type TEXT NOT NULL CHECK(request_type IN ('in','out','both')),
+            proposed_in TEXT,
+            proposed_out TEXT,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','approved','rejected')),
+            reviewed_by INTEGER,
+            review_comment TEXT,
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            reviewed_at TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_fix_requests_status
+            ON attendance_fix_requests(status);
+
+        CREATE TABLE IF NOT EXISTS reminder_log (
+            employee_id INTEGER NOT NULL,
+            reminder_type TEXT NOT NULL,
+            sent_date TEXT NOT NULL,
+            PRIMARY KEY (employee_id, reminder_type, sent_date)
+        );
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -839,6 +865,156 @@ def add_manual_attendance(employee_id: int, check_type: str, time_str: str,
             "VALUES (?, ?, ?, ?, 1, 1.0)",
             (employee_id, check_type, ts.isoformat(sep=' '), "Admin qo'shdi")
         )
+
+
+def delete_day_attendance_by_type(employee_id: int, date_local: str,
+                                  check_type: str) -> int:
+    """Berilgan mahalliy kunning faqat bitta turdagi ('in' yoki 'out')
+    yozuvlarini o'chirish. date_local: 'YYYY-MM-DD' (Toshkent vaqti)."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "DELETE FROM attendance WHERE employee_id = ? "
+            "AND date(timestamp, '+5 hours') = ? AND check_type = ?",
+            (employee_id, date_local, check_type)
+        )
+        return cursor.rowcount
+
+
+# ===== Web dashboard =====
+
+def get_dashboard_today():
+    """Bugungi holat (barcha faol xodimlar, boss'siz): first_in/last_out
+    Toshkent vaqtida + kunning oxirgi yozuv turi (holatni aniqlash uchun)."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT e.id, e.telegram_id, e.full_name, e.position,
+                   MIN(CASE WHEN a.check_type = 'in' THEN time(a.timestamp, '+5 hours') END) as first_in,
+                   MAX(CASE WHEN a.check_type = 'out' THEN time(a.timestamp, '+5 hours') END) as last_out,
+                   (SELECT a2.check_type FROM attendance a2
+                     WHERE a2.employee_id = e.id
+                       AND date(a2.timestamp, '+5 hours') = date('now', '+5 hours')
+                     ORDER BY datetime(a2.timestamp) DESC LIMIT 1) as last_type
+            FROM employees e
+            LEFT JOIN attendance a ON a.employee_id = e.id
+                AND date(a.timestamp, '+5 hours') = date('now', '+5 hours')
+            WHERE e.is_active = 1 AND e.role != 'boss'
+            GROUP BY e.id
+            ORDER BY e.full_name
+            """
+        ).fetchall()
+
+
+def get_dashboard_month(year: int, month: int):
+    """Oylik jamlanma uchun xom qatorlar: har faol xodim (boss'siz) uchun
+    kunma-kun first_in/last_out (Toshkent vaqtida). Kelmagan xodim ham
+    ro'yxatda chiqadi (day NULL)."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT e.id, e.full_name, e.position, d.day, d.first_in, d.last_out
+            FROM employees e
+            LEFT JOIN (
+                SELECT employee_id, date(timestamp, '+5 hours') as day,
+                       MIN(CASE WHEN check_type = 'in' THEN time(timestamp, '+5 hours') END) as first_in,
+                       MAX(CASE WHEN check_type = 'out' THEN time(timestamp, '+5 hours') END) as last_out
+                FROM attendance
+                WHERE strftime('%Y', timestamp, '+5 hours') = ?
+                  AND strftime('%m', timestamp, '+5 hours') = ?
+                GROUP BY employee_id, day
+            ) d ON d.employee_id = e.id
+            WHERE e.is_active = 1 AND e.role != 'boss'
+            ORDER BY e.full_name, d.day
+            """,
+            (str(year), f"{month:02d}")
+        ).fetchall()
+
+
+# ===== Davomat tuzatish so'rovlari =====
+
+def create_fix_request(employee_id: int, target_date: str, request_type: str,
+                       proposed_in, proposed_out, reason: str) -> int:
+    """Yangi tuzatish so'rovi. Yangi yozuv id'si qaytadi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO attendance_fix_requests "
+            "(employee_id, target_date, request_type, proposed_in, proposed_out, reason) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (employee_id, target_date, request_type, proposed_in, proposed_out, reason)
+        )
+        return cur.lastrowid
+
+
+def has_pending_fix_request(employee_id: int, target_date: str) -> bool:
+    """Shu kun uchun kutilayotgan so'rov bormi?"""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM attendance_fix_requests "
+            "WHERE employee_id = ? AND target_date = ? AND status = 'pending' LIMIT 1",
+            (employee_id, target_date)
+        ).fetchone()
+        return row is not None
+
+
+def count_fix_requests_today(employee_id: int) -> int:
+    """Xodim bugun (Toshkent kuni) nechta so'rov yuborgan."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM attendance_fix_requests "
+            "WHERE employee_id = ? "
+            "AND date(created_at, '+5 hours') = date('now', '+5 hours')",
+            (employee_id,)
+        ).fetchone()
+        return row["cnt"]
+
+
+def get_fix_request(req_id: int):
+    """Bitta so'rov (xodim ma'lumotlari bilan)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT r.*, e.full_name, e.telegram_id FROM attendance_fix_requests r "
+            "JOIN employees e ON e.id = r.employee_id WHERE r.id = ?",
+            (req_id,)
+        ).fetchone()
+
+
+def get_pending_fix_requests():
+    """Barcha kutilayotgan so'rovlar (eski → yangi)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT r.*, e.full_name, e.telegram_id FROM attendance_fix_requests r "
+            "JOIN employees e ON e.id = r.employee_id "
+            "WHERE r.status = 'pending' ORDER BY datetime(r.created_at)"
+        ).fetchall()
+
+
+def claim_fix_request(req_id: int, status: str, reviewed_by: int,
+                      comment: str = None) -> bool:
+    """So'rovni atomik yakunlash. Ikki admin bir vaqtda bossagina bittasi
+    yutadi (WHERE status='pending'). Muvaffaqiyatda True."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE attendance_fix_requests "
+            "SET status = ?, reviewed_by = ?, review_comment = ?, "
+            "reviewed_at = datetime('now') "
+            "WHERE id = ? AND status = 'pending'",
+            (status, reviewed_by, comment, req_id)
+        )
+        return cur.rowcount == 1
+
+
+# ===== Eslatmalar jurnali =====
+
+def try_mark_reminder(employee_id: int, reminder_type: str, sent_date: str) -> bool:
+    """Eslatmani atomik band qilish: birinchi urinishda True, takrorda False.
+    Restart'da ham takrorlanmaydi (bazada saqlanadi)."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO reminder_log (employee_id, reminder_type, sent_date) "
+            "VALUES (?, ?, ?)",
+            (employee_id, reminder_type, sent_date)
+        )
+        return cur.rowcount == 1
 
 
 # ===== Ish haqqi =====

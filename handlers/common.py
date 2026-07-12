@@ -58,7 +58,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
             current_state.startswith(p) for p in (
                 "AdminPanel:", "AdminSalary:", "TaskCreate:", "AdminAddEmployee:",
                 "FinanceEntry:", "FinanceDelete:", "EmpRateChange:",
-                "Broadcast:", "PersonalFinance:",
+                "Broadcast:", "PersonalFinance:", "FixReview:",
             )
         )
         if bool(employee["is_admin"]) and is_admin_flow:

@@ -120,6 +120,7 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
          KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
         [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
          KeyboardButton(text=texts.BTN_ADMIN_RATES)],
+        [KeyboardButton(text=texts.BTN_FIX_REQUESTS_ADMIN)],
         [KeyboardButton(text=texts.BTN_ADMIN_SALARY),
          KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
         [KeyboardButton(text=texts.BTN_ADMIN_EXPORT),
@@ -154,6 +155,7 @@ def grp_attendance_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
             [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT)],
+            [KeyboardButton(text=texts.BTN_FIX_REQUESTS_ADMIN)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
         ],
         resize_keyboard=True,
@@ -174,6 +176,8 @@ def grp_control_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
+            [KeyboardButton(text=texts.BTN_WEB_DASHBOARD),
+             KeyboardButton(text=texts.BTN_REMINDERS)],
             [KeyboardButton(text=texts.BTN_OFFICE_IP)],
             [KeyboardButton(text=texts.BTN_POSITIONS),
              KeyboardButton(text=texts.BTN_FINANCE_CATEGORIES)],
@@ -746,6 +750,72 @@ def bc_confirm_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=texts.BC_BTN_SEND, callback_data="bc_confirm:yes"),
          InlineKeyboardButton(text=texts.BC_BTN_CANCEL, callback_data="bc_cancel")],
+    ])
+
+
+# ===== Web dashboard =====
+
+def dashboard_link_kb(url: str) -> InlineKeyboardMarkup:
+    """Dashboardni brauzerda ochish tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BTN_DASHBOARD_OPEN, url=url)],
+    ])
+
+
+# ===== Davomat tuzatish so'rovlari =====
+
+def stats_inline_kb() -> InlineKeyboardMarkup:
+    """Statistika ostidagi 'tuzatish so'rovi' tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BTN_FIX_REQUEST, callback_data="fixreq:start")],
+    ])
+
+
+def fixreq_days_kb() -> InlineKeyboardMarkup:
+    """Oxirgi 7 kun (bugundan orqaga). Callback: fixreq:day:YYYY-MM-DD"""
+    from datetime import timedelta
+    from tzutil import now as tz_now
+    today = tz_now().date()
+    rows = []
+    for i in range(7):
+        d = today - timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        label_date = d.strftime("%d.%m")
+        if i == 0:
+            label = f"📅 {label_date} (Bugun)"
+        elif i == 1:
+            label = f"📅 {label_date} (Kecha)"
+        else:
+            label = f"📅 {label_date} ({texts.WEEKDAYS_UZ[d.weekday()]})"
+        rows.append([InlineKeyboardButton(
+            text=label, callback_data=f"fixreq:day:{date_str}"
+        )])
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="fixreq:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def fixreq_type_kb() -> InlineKeyboardMarkup:
+    """Muammo turi. Callback: fixreq:type:{in|out|both}"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.FIXREQ_TYPE_IN, callback_data="fixreq:type:in")],
+        [InlineKeyboardButton(text=texts.FIXREQ_TYPE_OUT, callback_data="fixreq:type:out")],
+        [InlineKeyboardButton(text=texts.FIXREQ_TYPE_BOTH, callback_data="fixreq:type:both")],
+        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="fixreq:cancel")],
+    ])
+
+
+def fixreq_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Yuborish", callback_data="fixreq:confirm"),
+         InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="fixreq:cancel")],
+    ])
+
+
+def fixreq_review_kb(req_id: int) -> InlineKeyboardMarkup:
+    """Admin uchun tasdiqlash/rad etish. Callback: fixrev:ok|no:{id}"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.FIXREQ_BTN_APPROVE, callback_data=f"fixrev:ok:{req_id}"),
+         InlineKeyboardButton(text=texts.FIXREQ_BTN_REJECT, callback_data=f"fixrev:no:{req_id}")],
     ])
 
 

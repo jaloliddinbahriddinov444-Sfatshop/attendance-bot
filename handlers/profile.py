@@ -131,10 +131,7 @@ async def show_stats(message: Message):
     records = get_monthly_attendance(employee["id"], year, month)
 
     if not records:
-        await message.answer(
-            texts.NO_STATS,
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
-        )
+        await message.answer(texts.NO_STATS, reply_markup=kb.stats_inline_kb())
         return
 
     cfg = get_office_config()
@@ -194,7 +191,7 @@ async def show_stats(message: Message):
             days=len(records), late=late_count, avg=avg_str,
             details="\n".join(details_lines[:15])  # Eng yangi 15 kun
         ),
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+        reply_markup=kb.stats_inline_kb()
     )
 
 

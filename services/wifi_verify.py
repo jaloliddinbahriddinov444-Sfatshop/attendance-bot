@@ -653,6 +653,10 @@ async def start_verify_server(bot=None, port: int = None) -> web.AppRunner:
     # Sog'liq tekshiruvi (Render uchun)
     app.router.add_get("/health", lambda r: web.Response(text="OK"))
 
+    # Web admin dashboard (/dashboard, /api/dashboard/*)
+    from services.dashboard import setup_dashboard_routes
+    setup_dashboard_routes(app)
+
     actual_port = port if port is not None else WEB_PORT
     runner = web.AppRunner(app)
     await runner.setup()

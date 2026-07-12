@@ -37,6 +37,13 @@ DEFAULT_WORK_START = os.getenv("WORK_START", "09:00")
 DEFAULT_WORK_END = os.getenv("WORK_END", "18:00")
 DEFAULT_OFFICE_WIFI = os.getenv("OFFICE_WIFI", "Office_WiFi")
 
+# === Web dashboard ===
+# Maxfiy kalit bo'sh bo'lsa dashboard butunlay o'chiq (barcha so'rovlar 403)
+DASHBOARD_API_KEY = os.getenv("DASHBOARD_API_KEY", "")
+# CORS: sfatshop sahifasi fetch qilishi uchun ruxsat etilgan origin
+# (masalan https://api.sfatshop.uz). Bo'sh bo'lsa CORS header qo'yilmaydi.
+DASHBOARD_ALLOWED_ORIGIN = os.getenv("DASHBOARD_ALLOWED_ORIGIN", "")
+
 # Yuz tanish: 0.0 (eng qattiq) — 1.0 (eng yumshoq). Tavsiya: 0.50
 FACE_MATCH_TOLERANCE = float(os.getenv("FACE_TOLERANCE", "0.50"))
 

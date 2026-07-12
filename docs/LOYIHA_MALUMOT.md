@@ -216,3 +216,35 @@ handlers/finance.py, handlers/personal_finance.py;
 yangi: catutil.py, handlers/categories.py.
 Smoke-testlar vaqtinchalik bazada o'tkazildi — jonli attendance.db tegilmagan.
 Batafsil reja: `~/.claude/plans/telegram-botimga-aiogram-3-x-eager-lovelace.md`
+
+### 2026-07-12 (3) — 3 yangi funksiya: Dashboard, Tuzatish so'rovlari, Eslatmalar
+
+Ish oldidan server↔lokal solishtirildi (md5) — 100% sinxron edi.
+
+**1. Web Dashboard** (`services/dashboard.py`, wifi_verify'dagi 9090-port serverga
+ulangan): `GET /dashboard?key=`, `/api/dashboard/today`, `/api/dashboard/month`.
+Auth: `DASHBOARD_API_KEY` env (bo'sh = 403, hmac.compare_digest), CORS:
+`DASHBOARD_ALLOWED_ORIGIN`. Bosh Admin tugmasi: Boshqaruv → 🖥 Web Dashboard.
+DIQQAT: serverdagi nginx'ga /dashboard va /api/dashboard/ location bloklari
+kerak (README'da namuna) — deploy paytida qo'shiladi.
+
+**2. Davomat tuzatish so'rovlari** (`handlers/fix_requests.py`, jadval
+`attendance_fix_requests`): xodim 📊 Statistika → "✏️ Davomatni tuzatish
+so'rovi" (7 kun, in/out/both, HH:MM, sabab ≥5 belgi, kuniga max 3, kunga 1
+pending). Adminlarga inline ✅/❌; tasdiqlash `claim_fix_request` atomik UPDATE
+bilan (ikki admin poygasi), qo'llash `delete_day_attendance[_by_type]` +
+`add_manual_attendance` (UTC konvertatsiya tayyor). Cancel prefiksi
+`FixReview:` common.py ro'yxatiga qo'shilgan.
+
+**3. Avtomatik eslatmalar** (`services/reminders.py`, bot.py'da
+`asyncio.create_task`): 60s loop, work_start−15 (pre_start), +20 (late, xodim +
+adminlarga bitta jamlanma), work_end+10 (forgot_out). Dedup: `reminder_log`
+jadvali (atomik INSERT OR IGNORE, restart-safe), oyna 10 daqiqa. Toggle:
+Boshqaruv → 🔔 Eslatmalar (settings 'reminders_enabled', default '1').
+`WEEKEND_DAYS = set()` kelajak uchun.
+
+Yangi env: `DASHBOARD_API_KEY`, `DASHBOARD_ALLOWED_ORIGIN` (.env.example'da).
+40 ta avtomatik test vaqtinchalik bazada o'tdi; dashboard brauzerda (desktop +
+mobil) tekshirildi. Jonli attendance.db tegilmagan. LOKAL BOTNI TO'LIQ ISHGA
+TUSHIRMANG — polling produksiya bilan to'qnashadi (409).
+Reja: `~/.claude/plans/telegram-botimga-aiogram-3-x-cuddly-giraffe.md`

@@ -188,6 +188,105 @@ sudo systemctl status davomat-bot
 ### Railway.app
 Render kabi, lekin `railway.json` bilan sozlash mumkin.
 
+## 🖥 Web Dashboard (jonli "kim ishda" ko'rinishi)
+
+Bot ichidagi aiohttp serverda (9090-port) uchta yangi endpoint bor:
+
+| Endpoint | Tavsif |
+|---|---|
+| `GET /dashboard?key=API_KEY` | To'liq HTML sahifa (60s da avto-yangilanadi) |
+| `GET /api/dashboard/today?key=API_KEY` | Bugungi holat (JSON) |
+| `GET /api/dashboard/month?key=API_KEY&year=2026&month=7` | Oylik jamlanma (JSON) |
+
+**Xavfsizlik:**
+- `.env`da `DASHBOARD_API_KEY` sozlanadi (bo'sh bo'lsa dashboard butunlay o'chiq — hamma so'rov 403).
+  Kuchli kalit yaratish: `openssl rand -hex 24`
+- Kalit `?key=` query-param yoki `X-Api-Key` header orqali yuboriladi.
+- **HTTPS majburiy** — kalit URL ichida ketadi, oddiy HTTP'da ochiq ko'rinadi.
+- Bosh Admin botdagi **⚙️ Boshqaruv → 🖥 Web Dashboard** tugmasi orqali tayyor havolani oladi.
+
+**nginx reverse proxy** (serverdagi konfiguratsiyaga qo'shiladi, `/verify/` bloklari yoniga):
+
+```nginx
+location /dashboard {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+location /api/dashboard/ {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+So'ng: `nginx -t && systemctl reload nginx`
+
+### Sfatshop sahifasiga biriktirish
+
+**(a) iframe varianti** — eng oson:
+
+```html
+<iframe
+  src="https://api.sfatshop.uz/dashboard?key=SIZNING_KALIT"
+  style="width:100%; height:700px; border:none; border-radius:12px;"
+  title="Davomat dashboard">
+</iframe>
+```
+
+**(b) API + o'z dizayni** — sahifa o'zi fetch qiladi. Buning uchun `.env`da
+`DASHBOARD_ALLOWED_ORIGIN` ga sfatshop sahifasi origin'i yoziladi
+(masalan `https://api.sfatshop.uz`), shunda JSON endpointlarga CORS header qo'yiladi.
+Kalitni query-param bilan yuboring (preflight'siz oddiy GET):
+
+```js
+const KEY = "SIZNING_KALIT";
+const res = await fetch(`https://api.sfatshop.uz/api/dashboard/today?key=${KEY}`);
+const data = await res.json();
+```
+
+`/api/dashboard/today` javobi:
+
+```json
+{
+  "date": "2026-07-12",
+  "work_start": "09:00",
+  "work_end": "18:00",
+  "counts": {"in": 5, "out": 2, "absent": 1},
+  "employees": [
+    {
+      "id": 3,
+      "full_name": "Aliyev Vali",
+      "position": "Sotuvchi",
+      "status": "in",
+      "first_in": "08:55",
+      "last_out": null,
+      "late_minutes": 0,
+      "worked_minutes": 312
+    }
+  ]
+}
+```
+
+Maydonlar: `status` — `"in"` (ishda) / `"out"` (ketgan) / `"absent"` (kelmagan);
+`late_minutes` — ish boshlanishidan kechikish (daqiqa); `worked_minutes` — ishlagan
+vaqt (ishda bo'lsa hozirgacha); vaqtlar Toshkent (UTC+5).
+
+`/api/dashboard/month?year=&month=` javobi:
+
+```json
+{
+  "year": 2026,
+  "month": 7,
+  "employees": [
+    {"id": 3, "full_name": "Aliyev Vali", "position": "Sotuvchi",
+     "days": 22, "late_count": 3, "worked_hours": 176.5}
+  ]
+}
+```
+
 ## 💾 Ma'lumotlar zaxirasi
 
 SQLite bazasi `attendance.db` faylida saqlanadi. Vaqti-vaqti bilan nusxa olib qo'ying:

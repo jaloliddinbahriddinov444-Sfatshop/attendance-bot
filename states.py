@@ -115,6 +115,18 @@ class BeaconDevice(StatesGroup):
     waiting_label = State()
 
 
+class FixRequest(StatesGroup):
+    """Xodim: davomatni tuzatish so'rovi."""
+    entering_time_in = State()
+    entering_time_out = State()
+    entering_reason = State()
+
+
+class FixReview(StatesGroup):
+    """Admin: tuzatish so'rovini rad etish izohi."""
+    entering_reject_comment = State()
+
+
 class Broadcast(StatesGroup):
     target = State()
     choosing_employee = State()
