@@ -24,6 +24,8 @@ from database import (
     create_finance_entry,
     get_monthly_finance_entries,
     get_monthly_finance_summary,
+    get_today_finance_summary,
+    get_custom_category_by_id,
     add_salary_entry,
     is_month_closed,
     get_finance_entry,
@@ -32,6 +34,7 @@ from database import (
     get_finance_balance,
     get_finance_balance_before,
 )
+from catutil import resolve_category, custom_id
 from tzutil import now as tz_now, fmt as fmt_local
 
 logger = logging.getLogger(__name__)
@@ -82,7 +85,7 @@ async def finance_add_income_start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         texts.FINANCE_PICK_CATEGORY_INCOME,
-        reply_markup=kb.finance_categories_kb("income")
+        reply_markup=kb.finance_categories_kb("income", me["id"])
     )
 
 
@@ -95,7 +98,7 @@ async def finance_add_expense_start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         texts.FINANCE_PICK_CATEGORY_EXPENSE,
-        reply_markup=kb.finance_categories_kb("expense")
+        reply_markup=kb.finance_categories_kb("expense", me["id"])
     )
 
 
@@ -124,7 +127,7 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
     if cat_key == "personal" and entry_type == "expense":
         await call.message.edit_text(
             texts.FINANCE_PICK_PERSONAL,
-            reply_markup=kb.finance_personal_cats_kb()
+            reply_markup=kb.finance_personal_cats_kb(me["id"])
         )
         await call.answer()
         return
@@ -133,18 +136,24 @@ async def finance_category_chosen(call: CallbackQuery, state: FSMContext):
     if cat_key == "backexp":
         await call.message.edit_text(
             texts.FINANCE_PICK_CATEGORY_EXPENSE,
-            reply_markup=kb.finance_categories_kb("expense")
+            reply_markup=kb.finance_categories_kb("expense", me["id"])
         )
         await call.answer()
         return
 
-    # Kategoriya lug'atidan olish
-    all_cats = texts.FINANCE_CATEGORIES
-    if cat_key not in all_cats:
-        await call.answer("Noma'lum turkum", show_alert=True)
-        return
-
-    emoji, cat_name = all_cats[cat_key]
+    # Kategoriya: standart lug'atdan yoki maxsus (c{id}) turkumdan
+    if cat_key in texts.FINANCE_CATEGORIES:
+        emoji, cat_name = texts.FINANCE_CATEGORIES[cat_key]
+    else:
+        cid = custom_id(cat_key)
+        row = get_custom_category_by_id(cid) if cid is not None else None
+        ok = (row and row["owner_id"] == me["id"] and row["is_active"]
+              and ((row["scope"] == "fin" and row["entry_type"] == entry_type)
+                   or (row["scope"] == "fin_personal" and entry_type == "expense")))
+        if not ok:
+            await call.answer("Noma'lum turkum", show_alert=True)
+            return
+        emoji, cat_name = row["emoji"] or "🏷", row["name"]
     type_name = "Kirim" if entry_type == "income" else "Chiqim"
 
     await state.update_data(
@@ -484,7 +493,7 @@ async def finance_delete_pick(call: CallbackQuery):
     if not entry:
         await call.answer("Yozuv topilmadi", show_alert=True)
         return
-    cat_info = texts.FINANCE_CATEGORIES.get(entry["category"], ("📋", entry["category"]))
+    cat_info = resolve_category(entry["category"], "fin")
     note_line = (texts.FINANCE_NOTE_FRAGMENT.format(note=_esc(entry["note"]))
                  if entry["note"] else "")
     advance_warn = (texts.FINANCE_DELETE_ADVANCE_WARN
@@ -520,7 +529,7 @@ async def finance_delete_confirm(call: CallbackQuery):
     if not ok:
         await call.answer("O'chirib bo'lmadi", show_alert=True)
         return
-    cat_info = texts.FINANCE_CATEGORIES.get(entry["category"], ("📋", entry["category"]))
+    cat_info = resolve_category(entry["category"], "fin")
     logger.info("Finance entry %s o'chirildi (owner=%s)", entry_id, me["id"])
     await call.message.edit_text(
         texts.FINANCE_DELETED.format(
@@ -547,6 +556,7 @@ async def finance_summary(message: Message):
 
     if not summary["by_category"]["income"] and not summary["by_category"]["expense"]:
         out += texts.FINANCE_SUMMARY_EMPTY
+        out += texts.FINANCE_SUMMARY_TODAY_EMPTY
         out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
         await message.answer(out)
         return
@@ -554,7 +564,7 @@ async def finance_summary(message: Message):
     if summary["by_category"]["income"]:
         out += texts.FINANCE_SUMMARY_INCOME.format(total=summary["income_total"])
         for row in summary["by_category"]["income"]:
-            cat_info = texts.FINANCE_CATEGORIES.get(row["category"], ("📋", row["category"]))
+            cat_info = resolve_category(row["category"], "fin")
             out += texts.FINANCE_SUMMARY_CAT_LINE.format(
                 emoji=cat_info[0], category=cat_info[1],
                 total=row["total"], cnt=row["cnt"]
@@ -563,7 +573,7 @@ async def finance_summary(message: Message):
     if summary["by_category"]["expense"]:
         out += texts.FINANCE_SUMMARY_EXPENSE.format(total=summary["expense_total"])
         for row in summary["by_category"]["expense"]:
-            cat_info = texts.FINANCE_CATEGORIES.get(row["category"], ("📋", row["category"]))
+            cat_info = resolve_category(row["category"], "fin")
             out += texts.FINANCE_SUMMARY_CAT_LINE.format(
                 emoji=cat_info[0], category=cat_info[1],
                 total=row["total"], cnt=row["cnt"]
@@ -576,6 +586,29 @@ async def finance_summary(message: Message):
         out += texts.FINANCE_SUMMARY_NET_NEG.format(net=net)
     else:
         out += texts.FINANCE_SUMMARY_NET_ZERO
+
+    # Bugungi kun bloki
+    today = get_today_finance_summary(me["id"], now.strftime("%Y-%m-%d"))
+    date_lbl = now.strftime("%d.%m")
+    if today["cnt"] == 0:
+        out += texts.FINANCE_SUMMARY_TODAY_EMPTY
+    else:
+        if today["expense_cnt"]:
+            out += texts.FINANCE_SUMMARY_TODAY.format(
+                date=date_lbl, total=today["expense_total"],
+                cnt=today["expense_cnt"]
+            )
+            for r in today["by_category"]["expense"]:
+                emoji, name = resolve_category(r["category"], "fin")
+                out += texts.FINANCE_SUMMARY_TODAY_CAT.format(
+                    emoji=emoji, category=name, total=r["total"]
+                )
+        else:
+            out += texts.FINANCE_SUMMARY_TODAY_NO_EXPENSE.format(date=date_lbl)
+        if today["income_total"]:
+            out += texts.FINANCE_SUMMARY_TODAY_INCOME.format(
+                total=today["income_total"]
+            )
 
     out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
     await message.answer(out)
@@ -660,7 +693,7 @@ def _build_finance_excel(entries, summary, year: int, month: int,
     for idx, e in enumerate(entries):
         i = start + idx
         amount = e["amount"]
-        cat_info = texts.FINANCE_CATEGORIES.get(e["category"], ("📋", e["category"]))
+        cat_info = resolve_category(e["category"], "fin")
         ws.cell(row=i, column=1, value=fmt_local(e["entry_date"], "%d.%m.%Y"))
         ws.cell(row=i, column=2, value=fmt_local(e["entry_date"], "%H:%M"))
         ws.cell(row=i, column=3, value=f"{cat_info[0]} {cat_info[1]}")
@@ -729,7 +762,7 @@ def _build_finance_excel(entries, summary, year: int, month: int,
     for tp in ("income", "expense"):
         type_label = "Kirim" if tp == "income" else "Chiqim"
         for r in summary["by_category"].get(tp, []):
-            cat_info = texts.FINANCE_CATEGORIES.get(r["category"], ("📋", r["category"]))
+            cat_info = resolve_category(r["category"], "fin")
             ws2.cell(row=row, column=1, value=type_label)
             ws2.cell(row=row, column=2, value=f"{cat_info[0]} {cat_info[1]}")
             ws2.cell(row=row, column=3, value=r["cnt"])

@@ -873,6 +873,7 @@ BTN_FINANCE_NOTE_SKIP = "⏭ Izohsiz"
 BTN_FINANCE_CATEGORY_OTHER = "📝 Boshqa (qo'lda izoh)"
 BTN_FINANCE_TODAY = "📅 Bugungi sana"
 BTN_FINANCE_DELETE = "🗑 Yozuvni o'chirish"
+BTN_CATEGORY_MANAGE = "⚙️ Turkumlar"
 
 # Dialog
 FINANCE_MENU = (
@@ -946,6 +947,12 @@ FINANCE_SUMMARY_NET_NEG = "\n\n🔻 <b>Zarar:</b> {net:,} so'm"
 FINANCE_SUMMARY_NET_ZERO = "\n\n⚖️ <b>Hisob:</b> 0 so'm"
 FINANCE_SUMMARY_CAT_LINE = "\n  {emoji} {category}: {total:,} so'm ({cnt})"
 
+FINANCE_SUMMARY_TODAY = "\n\n📅 <b>Bugun ({date}):</b> −{total:,} so'm ({cnt} ta yozuv)"
+FINANCE_SUMMARY_TODAY_NO_EXPENSE = "\n\n📅 <b>Bugun ({date}):</b> chiqim yo'q"
+FINANCE_SUMMARY_TODAY_CAT = "\n  {emoji} {category}: {total:,} so'm"
+FINANCE_SUMMARY_TODAY_INCOME = "\n➕ Bugungi kirim: +{total:,} so'm"
+FINANCE_SUMMARY_TODAY_EMPTY = "\n\n📅 Bugun hali yozuv yo'q."
+
 FINANCE_EXCEL_EMPTY = "ℹ️ Bu oyda yozuvlar yo'q — Excel yaratish ma'nosiz."
 FINANCE_NO_PERMISSION = "❌ Moliya bo'limi faqat Boss va Bosh Admin uchun."
 FINANCE_PICK_EMPLOYEE_ADVANCE = (
@@ -960,6 +967,57 @@ FINANCE_ADVANCE_MONTH_CLOSED = (
     "🔒 {month} {year} oyi yopilgan — bu oyga avans yozib bo'lmaydi.\n"
     "Avval oyni qayta oching."
 )
+
+
+# ===== Maxsus turkumlar (custom categories) =====
+
+CCAT_PICK_SECTION = (
+    "⚙️ <b>Turkumlar boshqaruvi</b>\n\n"
+    "Qaysi bo'lim turkumlarini boshqarasiz?"
+)
+CCAT_BTN_SECTION_FIN = "💰 Moliya bo'limi"
+CCAT_BTN_SECTION_PF = "📊 Shaxsiy xarajatlarim"
+CCAT_MENU_HEADER_FIN = (
+    "⚙️ <b>Moliya turkumlari</b>\n\n"
+    "O'zingiz qo'shgan turkumlar. O'chirish uchun 🗑 tugmasini bosing."
+)
+CCAT_MENU_HEADER_PF = (
+    "⚙️ <b>Shaxsiy moliya turkumlari</b>\n\n"
+    "O'zingiz qo'shgan turkumlar. O'chirish uchun 🗑 tugmasini bosing."
+)
+CCAT_MENU_EMPTY = "\n\nℹ️ Hozircha maxsus turkum yo'q — «➕ Turkum qo'shish» ni bosing."
+CCAT_BTN_ADD = "➕ Turkum qo'shish"
+CCAT_PICK_DEST = "➕ <b>Yangi turkum</b>\n\nTurkum qayerga qo'shilsin?"
+CCAT_DEST_LABELS = {
+    ("fin", "expense"):          "➖ Ishxona chiqimi",
+    ("fin", "income"):           "➕ Ishxona kirimi",
+    ("fin_personal", "expense"): "🛍 Shaxsiy pastki turkum",
+    ("pf", "income"):            "➕ Shaxsiy kirim",
+    ("pf", "expense"):           "➖ Shaxsiy chiqim",
+}
+CCAT_ASK_NAME = (
+    "✏️ <b>Yangi turkum</b> · {dest}\n\n"
+    "Turkum nomini yozing (2–30 belgi).\n"
+    "Istasangiz boshiga emoji qo'ying, masalan: <code>🚬 Sigaret</code>"
+)
+CCAT_NAME_INVALID = (
+    "⚠️ Nom noto'g'ri. 2–30 belgi bo'lsin, "
+    "<code>&lt;</code> va <code>&gt;</code> belgilarisiz. Qayta yozing:"
+)
+CCAT_SAVED = (
+    "✅ <b>Yangi turkum qo'shildi</b>\n\n"
+    "{emoji} <b>{name}</b>\n"
+    "📂 Bo'lim: <i>{dest}</i>"
+)
+CCAT_DELETE_CONFIRM = (
+    "🗑 <b>Turkum o'chirilsinmi?</b>\n\n"
+    "{emoji} <b>{name}</b> · <i>{dest}</i>\n\n"
+    "Eski yozuvlar saqlanib qoladi — hisobotlarda nom ko'rinaveradi, "
+    "faqat yangi yozuv qo'shishda bu turkum chiqmaydi."
+)
+CCAT_BTN_DEL_YES = "✅ Ha, o'chirish"
+CCAT_BTN_DEL_NO = "❌ Bekor"
+CCAT_DELETED = "🗑 Turkum o'chirildi: {emoji} {name}"
 
 
 # ===== Ofis IP boshqaruvi (dinamik whitelist) =====
@@ -1143,6 +1201,18 @@ PF_SUMMARY_LINE = "  {emoji} {name}: <b>{amount:,}</b>\n"
 PF_SUMMARY_NET_PLUS = "\n📈 <b>Sof qoldiq: +{net:,} so'm</b>"
 PF_SUMMARY_NET_MINUS = "\n📉 <b>Sof qoldiq: -{net:,} so'm</b>"
 PF_SUMMARY_EMPTY = "📊 Bu oyda hech qanday yozuv yo'q."
+
+PF_SUMMARY_TODAY = "\n\n📅 <b>Bugun:</b> −{today:,} so'm"
+PF_SUMMARY_TODAY_NONE = "\n\n📅 <b>Bugun:</b> hali chiqim yo'q"
+PF_SUMMARY_BUDGET = (
+    "\n💰 Qoldiq (bu oy): <b>{qoldiq:,} so'm</b>\n"
+    "📆 Oy oxirigacha: {days} kun\n"
+    "📊 Kunlik limit: ≈<b>{limit:,} so'm</b>"
+)
+PF_SUMMARY_NO_LIMIT = (
+    "\n🔻 Qoldiq manfiy yoki nol — bu oyda chiqim kirimdan oshgan, "
+    "limit hisoblanmaydi."
+)
 
 PF_DELETE_PICK = "🗑 O'chirish uchun yozuvni tanlang ({month}):"
 PF_DELETE_EMPTY = "📭 Bu oyda o'chirishga yozuv yo'q."

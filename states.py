@@ -97,6 +97,10 @@ class PersonalFinance(StatesGroup):
     deleting = State()
 
 
+class CategoryManage(StatesGroup):
+    entering_name = State()
+
+
 class Broadcast(StatesGroup):
     target = State()
     choosing_employee = State()

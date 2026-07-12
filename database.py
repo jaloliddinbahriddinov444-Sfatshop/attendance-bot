@@ -183,6 +183,20 @@ def init_db():
             FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS custom_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            scope TEXT NOT NULL CHECK(scope IN ('fin','fin_personal','pf')),
+            entry_type TEXT NOT NULL CHECK(entry_type IN ('income','expense')),
+            emoji TEXT DEFAULT '🏷',
+            name TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (owner_id) REFERENCES employees(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_custom_cats_owner
+            ON custom_categories(owner_id, scope, entry_type);
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -1156,6 +1170,93 @@ def get_monthly_finance_summary(owner_id: int, year: int, month: int):
     }
 
 
+def get_today_finance_summary(owner_id: int, date_str: str) -> dict:
+    """Bugungi kun xulosasi (Toshkent vaqti, 'YYYY-MM-DD')."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT entry_type, category, SUM(amount) AS total, COUNT(*) AS cnt
+            FROM finance_entries
+            WHERE owner_id = ?
+              AND date(entry_date, '+5 hours') = ?
+            GROUP BY entry_type, category
+            ORDER BY entry_type, total DESC
+            """,
+            (owner_id, date_str)
+        ).fetchall()
+    income_total = 0
+    expense_total = 0
+    expense_cnt = 0
+    cnt = 0
+    by_cat = {"income": [], "expense": []}
+    for r in rows:
+        cnt += r["cnt"]
+        if r["entry_type"] == "income":
+            income_total += r["total"]
+        else:
+            expense_total += r["total"]
+            expense_cnt += r["cnt"]
+        by_cat[r["entry_type"]].append(dict(r))
+    return {
+        "income_total": income_total,
+        "expense_total": expense_total,
+        "expense_cnt": expense_cnt,
+        "cnt": cnt,
+        "by_category": by_cat,
+    }
+
+
+# ===== Maxsus turkumlar (custom categories) =====
+
+def add_custom_category(owner_id: int, scope: str, entry_type: str,
+                        emoji: str, name: str) -> int:
+    """Yangi maxsus turkum qo'shish. Yozuvlarda kaliti 'c{id}' bo'ladi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO custom_categories (owner_id, scope, entry_type, emoji, name) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (owner_id, scope, entry_type, emoji, name)
+        )
+        return cur.lastrowid
+
+
+def get_custom_categories(owner_id: int, scope: str, entry_type: str = None):
+    """Egasi va scope bo'yicha aktiv maxsus turkumlar."""
+    with get_db() as conn:
+        if entry_type:
+            return conn.execute(
+                "SELECT * FROM custom_categories "
+                "WHERE owner_id = ? AND scope = ? AND entry_type = ? AND is_active = 1 "
+                "ORDER BY id",
+                (owner_id, scope, entry_type)
+            ).fetchall()
+        return conn.execute(
+            "SELECT * FROM custom_categories "
+            "WHERE owner_id = ? AND scope = ? AND is_active = 1 "
+            "ORDER BY id",
+            (owner_id, scope)
+        ).fetchall()
+
+
+def get_custom_category_by_id(cat_id: int):
+    """Turkumni ID bo'yicha olish (is_active'dan qat'i nazar — eski yozuvlar uchun)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM custom_categories WHERE id = ?", (cat_id,)
+        ).fetchone()
+
+
+def deactivate_custom_category(cat_id: int, owner_id: int) -> bool:
+    """Soft delete: is_active=0 (tarix buzilmasligi uchun DELETE emas)."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE custom_categories SET is_active = 0 "
+            "WHERE id = ? AND owner_id = ?",
+            (cat_id, owner_id)
+        )
+        return cur.rowcount > 0
+
+
 # ===== Lavozimlar tizimi =====
 
 def init_positions():
@@ -1394,6 +1495,23 @@ def pf_get_summary(employee_id: int, year: int, month: int) -> dict:
         "net": income_total - expense_total,
         "by_cat": by_cat,
     }
+
+
+def pf_get_today_totals(employee_id: int, date_str: str) -> dict:
+    """Bugungi kirim/chiqim jami (entry_date lokal 'YYYY-MM-DD' string)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT entry_type, SUM(amount) AS total, COUNT(*) AS cnt "
+            "FROM personal_finance "
+            "WHERE employee_id = ? AND entry_date = ? "
+            "GROUP BY entry_type",
+            (employee_id, date_str)
+        ).fetchall()
+    result = {"income": 0, "expense": 0, "cnt": 0}
+    for r in rows:
+        result[r["entry_type"]] = r["total"]
+        result["cnt"] += r["cnt"]
+    return result
 
 
 def pf_get_entry(entry_id: int, employee_id: int):

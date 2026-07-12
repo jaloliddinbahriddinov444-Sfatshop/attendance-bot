@@ -12,7 +12,7 @@ from database import init_db
 from services.wifi_verify import start_verify_server
 
 # Handlerlar
-from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler, emp_data as emp_data_handler, broadcast as broadcast_handler, personal_finance as pf_handler
+from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler, emp_data as emp_data_handler, broadcast as broadcast_handler, personal_finance as pf_handler, categories as categories_handler
 
 
 logging.basicConfig(
@@ -54,6 +54,7 @@ async def main():
         emp_data_handler.router,
         broadcast_handler.router,
         pf_handler.router,
+        categories_handler.router,
         common.router,
     )
 

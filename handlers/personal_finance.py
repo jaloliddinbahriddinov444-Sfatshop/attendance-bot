@@ -1,5 +1,6 @@
 """Shaxsiy moliya — Boss va Bosh Admin uchun shaxsiy kirim/chiqim hisobkitob."""
 import io
+import calendar
 import logging
 from datetime import datetime
 
@@ -13,7 +14,9 @@ from database import (
     get_employee_by_telegram_id,
     pf_add_entry, pf_get_monthly,
     pf_get_summary, pf_get_entry, pf_delete_entry,
+    pf_get_today_totals, get_custom_category_by_id,
 )
+from catutil import resolve_category, custom_id
 from states import PersonalFinance
 from tzutil import now as tz_now
 
@@ -62,7 +65,8 @@ async def pf_income_start(message: Message, state: FSMContext):
         return
     await state.clear()
     await state.update_data(pf_emp_id=me["id"], pf_type="income")
-    await message.answer(texts.PF_PICK_CAT_INCOME, reply_markup=kb.pf_income_cats_kb())
+    await message.answer(texts.PF_PICK_CAT_INCOME,
+                         reply_markup=kb.pf_income_cats_kb(me["id"]))
     await state.set_state(PersonalFinance.choosing_category)
 
 
@@ -76,7 +80,8 @@ async def pf_expense_start(message: Message, state: FSMContext):
         return
     await state.clear()
     await state.update_data(pf_emp_id=me["id"], pf_type="expense")
-    await message.answer(texts.PF_PICK_CAT_EXPENSE, reply_markup=kb.pf_expense_cats_kb())
+    await message.answer(texts.PF_PICK_CAT_EXPENSE,
+                         reply_markup=kb.pf_expense_cats_kb(me["id"]))
     await state.set_state(PersonalFinance.choosing_category)
 
 
@@ -85,23 +90,31 @@ async def pf_expense_start(message: Message, state: FSMContext):
 @router.callback_query(PersonalFinance.choosing_category, F.data.startswith("pf_cat:"))
 async def pf_cat_chosen(call: CallbackQuery, state: FSMContext):
     parts = call.data.split(":", 2)
+    # "pf_cat:cancel" 2 qismli keladi — uzunlik tekshiruvidan oldin ushlanadi
+    if parts[-1] == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
     if len(parts) < 3:
         await call.answer()
         return
     _, entry_type, cat_key = parts
 
-    if cat_key == "cancel":
-        await state.clear()
-        await call.message.edit_text(texts.CANCELLED)
-        await call.answer()
-        return
-
     all_cats = {**texts.PF_INCOME_CATS, **texts.PF_EXPENSE_CATS}
-    if cat_key not in all_cats:
-        await call.answer("Noma'lum kategoriya", show_alert=True)
-        return
-
-    emoji, cat_name = all_cats[cat_key]
+    if cat_key in all_cats:
+        emoji, cat_name = all_cats[cat_key]
+    else:
+        data = await state.get_data()
+        cid = custom_id(cat_key)
+        row = get_custom_category_by_id(cid) if cid is not None else None
+        ok = (row and row["scope"] == "pf" and row["is_active"]
+              and row["owner_id"] == data.get("pf_emp_id")
+              and row["entry_type"] == entry_type)
+        if not ok:
+            await call.answer("Noma'lum kategoriya", show_alert=True)
+            return
+        emoji, cat_name = row["emoji"] or "🏷", row["name"]
     await state.update_data(pf_cat_key=cat_key, pf_cat_name=f"{emoji} {cat_name}")
 
     await call.message.edit_text(
@@ -191,7 +204,7 @@ async def pf_summary(message: Message, state: FSMContext):
         for (etype, cat_key), amount in summary["by_cat"].items():
             if etype != "income":
                 continue
-            emoji, name = texts.PF_INCOME_CATS.get(cat_key, ("📋", cat_key))
+            emoji, name = resolve_category(cat_key, "pf")
             out += texts.PF_SUMMARY_LINE.format(emoji=emoji, name=name, amount=amount)
 
     # Chiqim
@@ -200,7 +213,7 @@ async def pf_summary(message: Message, state: FSMContext):
         for (etype, cat_key), amount in summary["by_cat"].items():
             if etype != "expense":
                 continue
-            emoji, name = texts.PF_EXPENSE_CATS.get(cat_key, ("📋", cat_key))
+            emoji, name = resolve_category(cat_key, "pf")
             out += texts.PF_SUMMARY_LINE.format(emoji=emoji, name=name, amount=amount)
 
     # Sof
@@ -209,6 +222,24 @@ async def pf_summary(message: Message, state: FSMContext):
         out += texts.PF_SUMMARY_NET_PLUS.format(net=net)
     else:
         out += texts.PF_SUMMARY_NET_MINUS.format(net=abs(net))
+
+    # Bugungi chiqim + kunlik byudjet
+    today = pf_get_today_totals(me["id"], now.strftime("%Y-%m-%d"))
+    if today["expense"] > 0:
+        out += texts.PF_SUMMARY_TODAY.format(today=today["expense"])
+    else:
+        out += texts.PF_SUMMARY_TODAY_NONE
+
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    remaining_days = max(days_in_month - now.day, 1)
+    qoldiq = net
+    if qoldiq <= 0:
+        out += texts.PF_SUMMARY_NO_LIMIT
+    else:
+        out += texts.PF_SUMMARY_BUDGET.format(
+            qoldiq=qoldiq, days=remaining_days,
+            limit=qoldiq // remaining_days
+        )
 
     await message.answer(out)
 
@@ -257,7 +288,7 @@ async def pf_excel(message: Message, state: FSMContext):
 
     for row_idx, e in enumerate(entries, 2):
         etype = "Kirim" if e["entry_type"] == "income" else "Chiqim"
-        cat_info = texts.PF_ALL_CATS.get(e["category"], ("", e["category"]))
+        cat_info = resolve_category(e["category"], "pf")
         cat_name = f"{cat_info[0]} {cat_info[1]}"
         fill = income_fill if e["entry_type"] == "income" else expense_fill
         row_data = [row_idx - 1, e["entry_date"], etype,
