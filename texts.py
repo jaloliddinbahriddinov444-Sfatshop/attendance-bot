@@ -873,7 +873,6 @@ BTN_FINANCE_NOTE_SKIP = "⏭ Izohsiz"
 BTN_FINANCE_CATEGORY_OTHER = "📝 Boshqa (qo'lda izoh)"
 BTN_FINANCE_TODAY = "📅 Bugungi sana"
 BTN_FINANCE_DELETE = "🗑 Yozuvni o'chirish"
-BTN_CATEGORY_MANAGE = "⚙️ Turkumlar"
 
 # Dialog
 FINANCE_MENU = (
@@ -947,12 +946,6 @@ FINANCE_SUMMARY_NET_NEG = "\n\n🔻 <b>Zarar:</b> {net:,} so'm"
 FINANCE_SUMMARY_NET_ZERO = "\n\n⚖️ <b>Hisob:</b> 0 so'm"
 FINANCE_SUMMARY_CAT_LINE = "\n  {emoji} {category}: {total:,} so'm ({cnt})"
 
-FINANCE_SUMMARY_TODAY = "\n\n📅 <b>Bugun ({date}):</b> −{total:,} so'm ({cnt} ta yozuv)"
-FINANCE_SUMMARY_TODAY_NO_EXPENSE = "\n\n📅 <b>Bugun ({date}):</b> chiqim yo'q"
-FINANCE_SUMMARY_TODAY_CAT = "\n  {emoji} {category}: {total:,} so'm"
-FINANCE_SUMMARY_TODAY_INCOME = "\n➕ Bugungi kirim: +{total:,} so'm"
-FINANCE_SUMMARY_TODAY_EMPTY = "\n\n📅 Bugun hali yozuv yo'q."
-
 FINANCE_EXCEL_EMPTY = "ℹ️ Bu oyda yozuvlar yo'q — Excel yaratish ma'nosiz."
 FINANCE_NO_PERMISSION = "❌ Moliya bo'limi faqat Boss va Bosh Admin uchun."
 FINANCE_PICK_EMPLOYEE_ADVANCE = (
@@ -969,57 +962,6 @@ FINANCE_ADVANCE_MONTH_CLOSED = (
 )
 
 
-# ===== Maxsus turkumlar (custom categories) =====
-
-CCAT_PICK_SECTION = (
-    "⚙️ <b>Turkumlar boshqaruvi</b>\n\n"
-    "Qaysi bo'lim turkumlarini boshqarasiz?"
-)
-CCAT_BTN_SECTION_FIN = "💰 Moliya bo'limi"
-CCAT_BTN_SECTION_PF = "📊 Shaxsiy xarajatlarim"
-CCAT_MENU_HEADER_FIN = (
-    "⚙️ <b>Moliya turkumlari</b>\n\n"
-    "O'zingiz qo'shgan turkumlar. O'chirish uchun 🗑 tugmasini bosing."
-)
-CCAT_MENU_HEADER_PF = (
-    "⚙️ <b>Shaxsiy moliya turkumlari</b>\n\n"
-    "O'zingiz qo'shgan turkumlar. O'chirish uchun 🗑 tugmasini bosing."
-)
-CCAT_MENU_EMPTY = "\n\nℹ️ Hozircha maxsus turkum yo'q — «➕ Turkum qo'shish» ni bosing."
-CCAT_BTN_ADD = "➕ Turkum qo'shish"
-CCAT_PICK_DEST = "➕ <b>Yangi turkum</b>\n\nTurkum qayerga qo'shilsin?"
-CCAT_DEST_LABELS = {
-    ("fin", "expense"):          "➖ Ishxona chiqimi",
-    ("fin", "income"):           "➕ Ishxona kirimi",
-    ("fin_personal", "expense"): "🛍 Shaxsiy pastki turkum",
-    ("pf", "income"):            "➕ Shaxsiy kirim",
-    ("pf", "expense"):           "➖ Shaxsiy chiqim",
-}
-CCAT_ASK_NAME = (
-    "✏️ <b>Yangi turkum</b> · {dest}\n\n"
-    "Turkum nomini yozing (2–30 belgi).\n"
-    "Istasangiz boshiga emoji qo'ying, masalan: <code>🚬 Sigaret</code>"
-)
-CCAT_NAME_INVALID = (
-    "⚠️ Nom noto'g'ri. 2–30 belgi bo'lsin, "
-    "<code>&lt;</code> va <code>&gt;</code> belgilarisiz. Qayta yozing:"
-)
-CCAT_SAVED = (
-    "✅ <b>Yangi turkum qo'shildi</b>\n\n"
-    "{emoji} <b>{name}</b>\n"
-    "📂 Bo'lim: <i>{dest}</i>"
-)
-CCAT_DELETE_CONFIRM = (
-    "🗑 <b>Turkum o'chirilsinmi?</b>\n\n"
-    "{emoji} <b>{name}</b> · <i>{dest}</i>\n\n"
-    "Eski yozuvlar saqlanib qoladi — hisobotlarda nom ko'rinaveradi, "
-    "faqat yangi yozuv qo'shishda bu turkum chiqmaydi."
-)
-CCAT_BTN_DEL_YES = "✅ Ha, o'chirish"
-CCAT_BTN_DEL_NO = "❌ Bekor"
-CCAT_DELETED = "🗑 Turkum o'chirildi: {emoji} {name}"
-
-
 # ===== Ofis IP boshqaruvi (dinamik whitelist) =====
 BTN_OFFICE_IP = "📍 Ofis IP boshqaruvi"
 BTN_OFFICE_IP_ADD = "➕ Joriy IP'ni qo'shish"
@@ -1032,7 +974,9 @@ OFFICE_IP_MENU = (
     "orqali yangi IP'ni qo'shasiz (Render sozlamalariga tegmasdan).\n\n"
     "➕ <b>Joriy IP'ni qo'shish</b> — havolani <u>ofis Wi-Fi'sida turib</u> oching, "
     "bot o'sha IP'ni avtomatik qo'shadi.\n"
-    "📋 <b>Ro'yxat</b> — qo'shilgan IP'larni ko'rish va o'chirish."
+    "📋 <b>Ro'yxat</b> — qo'shilgan IP'larni ko'rish va o'chirish.\n"
+    "📡 <b>Referens qurilma</b> — ofis WiFi'sidagi doim yoqilgan qurilma orqali "
+    "IP'ni <u>avtomatik</u> yangilab turish (qo'lda qo'shish shart bo'lmaydi)."
 )
 OFFICE_IP_SETLINK = (
     "📍 Quyidagi havolani <b>ofis Wi-Fi'sida turib</b> oching — joriy IP "
@@ -1059,6 +1003,111 @@ IP_CHANGED_ALERT = (
     "Agar bu HAQIQATAN ofis Wi-Fi'si bo'lsa — «qo'sh»ni bosing. "
     "Aks holda (xodim uydan yoki mobil internetdan) — e'tiborsiz qoldiring."
 )
+
+
+# ===== Referens qurilma (beacon) =====
+BTN_OFFICE_BEACON = "📡 Referens qurilma"
+
+BEACON_IP_CHANGED = (
+    "🔄 <b>Ofis IP'si avtomatik yangilandi</b>\n\n"
+    "Referens qurilma yangi ofis IP diapazonini aniqladi:\n"
+    "<s>{old}</s> → <code>{new}</code>\n\n"
+    "Davomat endi shu yangi IP orqali ishlaydi — hech narsa qilishingiz shart emas. ✅"
+)
+BEACON_STATUS_SET = (
+    "📡 <b>Referens qurilma holati</b>\n\n"
+    "Joriy ofis IP: <code>{ip}</code>\n"
+    "Diapazon: <code>{net}</code>\n"
+    "Oxirgi signal: <b>{ago}</b> oldin\n"
+    "Holat: {status}\n\n"
+    "🔗 <b>Qurilma URL'i</b> (maxfiy — faqat referens qurilmaga qo'ying):\n"
+    "<code>{url}</code>\n\n"
+    "Bu havolani ofis WiFi'sidagi doim yoqilgan qurilma har 5–10 daqiqada bir "
+    "ochib turishi kerak. Shunda ofis IP'si o'zgarsa ham davomat avtomatik ishlaydi."
+)
+BEACON_STATUS_UNSET = (
+    "📡 <b>Referens qurilma</b>\n\n"
+    "Hali bironta signal kelmagan. Quyidagi <b>maxfiy URL</b>'ni ofis WiFi'sidagi "
+    "doim yoqilgan qurilmaga (masalan eski telefon) qo'ying — u har 5–10 daqiqada bir "
+    "ochib tursa, ofis IP'si avtomatik yangilanib turadi:\n\n"
+    "<code>{url}</code>\n\n"
+    "⚠️ Bu havola maxfiy — faqat o'sha qurilmada bo'lsin."
+)
+BEACON_STATUS_OK = "🟢 faol"
+BEACON_STATUS_STALE = "🔴 signal yo'q — qurilmani tekshiring"
+BEACON_SECRET_RESET = (
+    "🔑 Yangi maxfiy URL yaratildi. Eski havola endi ishlamaydi — "
+    "referens qurilmaga yangisini qo'ying:\n\n<code>{url}</code>"
+)
+
+# ----- Ko'p qurilma boshqaruvi -----
+BEACON_DEVICES_HEADER = (
+    "📡 <b>Referens qurilmalar</b> (jami {n} ta)\n\n"
+    "Ofis WiFi'sidagi doim-yoqilgan qurilma(lar) joriy ofis IP'sini yangilab turadi. "
+    "Bir nechta qurilma bo'lsa — biri o'chsa ikkinchisi ushlab turadi.\n\n"
+    "{body}"
+)
+BEACON_DEVICES_EMPTY = (
+    "📡 <b>Referens qurilmalar</b>\n\n"
+    "Hali bironta qurilma yo'q.\n\n"
+    "«➕ Qurilma qo'shish» bilan qurilma qo'shing — sizga maxfiy URL beriladi, "
+    "uni ofis WiFi'sidagi doim-yoqilgan qurilmaga qo'yasiz."
+)
+BEACON_DEVICE_LINE = (
+    "{star}<b>{label}</b>\n"
+    "   IP: <code>{ip}</code>\n"
+    "   Signal: {status}"
+)
+BEACON_ADD_PROMPT = (
+    "➕ <b>Yangi qurilma</b>\n\n"
+    "Qurilma nomini kiriting (masalan: <b>Telefon</b>, <b>Ombor kompyuteri</b>):"
+)
+BEACON_DEVICE_ADDED = (
+    "✅ <b>{label}</b> qo'shildi.\n\n"
+    "🔗 <b>Maxfiy URL</b> — shu qurilmaga qo'ying (boshqa hech kimga bermang):\n"
+    "<code>{url}</code>\n\n"
+    "{guide}"
+)
+BEACON_SETUP_GUIDE = (
+    "📲 <b>Qanday sozlash:</b>\n"
+    "Bu URL'ni ofis WiFi'sidagi doim-yoqilgan qurilma har 15–30 daqiqada bir "
+    "ochib turishi kerak:\n"
+    "• <b>Android telefon</b> — MacroDroid: «Regular Interval» + «HTTP Request (GET)». "
+    "MacroDroid'da «WiFi SSID» sharti bilan faqat ofis WiFi'sida ishlaydigan qiling.\n"
+    "• <b>Kompyuter</b> — jadval (cron/launchd) bilan avtomatik.\n\n"
+    "⚠️ Qurilma faqat ofis WiFi'sida bo'lganda ishlasin — aks holda noto'g'ri IP yoziladi."
+)
+BEACON_DEVICE_URL = "🔗 <b>{label}</b> maxfiy URL'i:\n<code>{url}</code>"
+BEACON_DEVICE_REMOVED = "🗑 <b>{label}</b> o'chirildi."
+BEACON_PRIMARY_SET = "⭐ <b>{label}</b> asosiy qilib belgilandi."
+BTN_BEACON_ADD_DEVICE = "➕ Qurilma qo'shish"
+
+
+# ===== Moliya turkumlari (kategoriya) tizimi =====
+BTN_FINANCE_CATEGORIES = "🏷 Moliya turkumlari"
+
+FINCAT_MENU_HEADER = (
+    "🏷 <b>Moliya turkumlari</b>\n\n"
+    "{list}\n"
+    "🗑 — o'chirish · 🔒 — himoyalangan (o'chirib bo'lmaydi)\n\n"
+    "Yangi turkum qo'shish uchun pastdagi tugmani bosing."
+)
+FINCAT_TYPE_INCOME = "📥 Kirim turkumlari:"
+FINCAT_TYPE_EXPENSE = "📤 Chiqim turkumlari:"
+BTN_FINCAT_ADD = "➕ Yangi turkum"
+FINCAT_ASK_TYPE = "🏷 <b>Yangi turkum</b>\n\nQaysi turga qo'shamiz?"
+FINCAT_ASK_EMOJI = (
+    "🙂 Turkum uchun <b>belgi (emoji)</b> yuboring.\n"
+    "Masalan: 🍔 🚗 💧 📱\n\n"
+    "Yoki o'tkazib yuborish uchun «{skip}» deb yozing."
+)
+FINCAT_EMOJI_SKIP = "yoq"
+FINCAT_ASK_NAME = "✍️ Turkum <b>nomini</b> yozing (masalan: «Kommunal to'lov»):"
+FINCAT_NAME_SHORT = "❌ Nom juda qisqa. Kamida 2 ta harf yozing."
+FINCAT_ADDED = "✅ Yangi turkum qo'shildi: {emoji} <b>{name}</b> ({type})"
+FINCAT_DELETED = "🗑 Turkum o'chirildi: {emoji} {name}"
+FINCAT_DELETE_PROTECTED = "🔒 Bu turkumni o'chirib bo'lmaydi (tizim uchun zarur)."
+FINCAT_EMPTY = "<i>Hozircha turkumlar yo'q</i>"
 
 
 # ===== Lavozimlar tizimi =====
@@ -1089,6 +1138,27 @@ POS_DELETE_HAS_EMPLOYEES = (
     "❌ Bu lavozimga <b>{count}</b> ta xodim bog'langan — o'chirib bo'lmaydi.\n"
     "Avval ularning lavozimini o'zgartiring."
 )
+
+# ===== Lavozimni tahrirlash =====
+POS_EDIT_PICK_FIELD = (
+    "✏️ <b>{name}</b> — tahrirlash\n\n"
+    "🕐 Ish vaqti: <b>{hours} soat/kun</b>\n"
+    "💵 Stavka: <b>{min:,}–{max:,} so'm</b>\n\n"
+    "Nimani o'zgartiramiz?"
+)
+BTN_POS_EF_HOURS = "🕐 Ish vaqti"
+BTN_POS_EF_MIN = "💵 Min stavka"
+BTN_POS_EF_MAX = "💵 Max stavka"
+BTN_POS_EF_NAME = "📝 Nom"
+POS_EDIT_ASK_HOURS = (
+    "🕐 Yangi kunlik ish soatini yozing (masalan: <code>9</code> yoki <code>9.5</code>):\n"
+    "<i>Diqqat: shu lavozimdagi xodimlarning ish haqi yangi ish vaqti bo'yicha "
+    "qayta hisoblanadi (yopilmagan oylar uchun).</i>"
+)
+POS_EDIT_ASK_MIN = "💵 Yangi minimal kunlik stavkani yozing (so'mda):"
+POS_EDIT_ASK_MAX = "💵 Yangi maksimal kunlik stavkani yozing (so'mda):"
+POS_EDIT_ASK_NAME = "📝 Yangi lavozim nomini yozing:"
+POS_EDIT_DONE = "✅ Yangilandi: <b>{name}</b> — {hours} soat/kun | {min:,}–{max:,} so'm"
 
 SET_POS_PICK_EMP = "💼 <b>Lavozim/Stavka belgilash</b>\n\nXodimni tanlang:"
 SET_POS_PICK_POS = (
@@ -1173,8 +1243,8 @@ PF_MENU = (
 BTN_PF_INCOME = "➕ Kirim"
 BTN_PF_EXPENSE = "➖ Chiqim"
 BTN_PF_SUMMARY = "📈 Bu oy hisoboti"
-BTN_PF_EXCEL = "📥 Excel hisobot"
-BTN_PF_DELETE = "🗑 Yozuvni o'chirish"
+BTN_PF_EXCEL = "📥 Shaxsiy Excel"
+BTN_PF_DELETE = "🗑 Shaxsiy yozuvni o'chirish"
 
 PF_PICK_CAT_INCOME = "💰 Kirim turini tanlang:"
 PF_PICK_CAT_EXPENSE = "💸 Chiqim turini tanlang:"
@@ -1202,20 +1272,18 @@ PF_SUMMARY_NET_PLUS = "\n📈 <b>Sof qoldiq: +{net:,} so'm</b>"
 PF_SUMMARY_NET_MINUS = "\n📉 <b>Sof qoldiq: -{net:,} so'm</b>"
 PF_SUMMARY_EMPTY = "📊 Bu oyda hech qanday yozuv yo'q."
 
-PF_SUMMARY_TODAY = "\n\n📅 <b>Bugun:</b> −{today:,} so'm"
-PF_SUMMARY_TODAY_NONE = "\n\n📅 <b>Bugun:</b> hali chiqim yo'q"
-PF_SUMMARY_BUDGET = (
-    "\n💰 Qoldiq (bu oy): <b>{qoldiq:,} so'm</b>\n"
-    "📆 Oy oxirigacha: {days} kun\n"
-    "📊 Kunlik limit: ≈<b>{limit:,} so'm</b>"
-)
-PF_SUMMARY_NO_LIMIT = (
-    "\n🔻 Qoldiq manfiy yoki nol — bu oyda chiqim kirimdan oshgan, "
-    "limit hisoblanmaydi."
-)
-
 PF_DELETE_PICK = "🗑 O'chirish uchun yozuvni tanlang ({month}):"
 PF_DELETE_EMPTY = "📭 Bu oyda o'chirishga yozuv yo'q."
+PF_EXCEL_EMPTY = "📭 Bu oyda shaxsiy yozuv yo'q — Excel bo'sh bo'ladi."
+PF_DELETE_ASK_DATE = (
+    "🗑 Qaysi kundagi yozuvni o'chirmoqchisiz?\n\n"
+    "📅 <b>Bugun</b> tugmasini bosing yoki sanani <b>KK.OO.YYYY</b> "
+    "ko'rinishida kiriting:"
+)
+PF_DELETE_DAY_EMPTY = "📭 <b>{date}</b> kunida shaxsiy yozuv yo'q. Boshqa sana tanlang."
+PF_DELETE_PICK_DAY = (
+    "🗑 <b>{date}</b> — o'chirish uchun yozuvni tanlang:\n\n{list}"
+)
 PF_DELETED = "✅ Yozuv o'chirildi."
 
 # Shaxsiy moliya kategoriyalari

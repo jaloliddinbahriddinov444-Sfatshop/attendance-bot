@@ -89,16 +89,24 @@ class EmpRateChange(StatesGroup):
     enter_rate = State()
 
 
+class FinanceCategoryManage(StatesGroup):
+    choose_type = State()
+    waiting_emoji = State()
+    waiting_name = State()
+
+
 class PersonalFinance(StatesGroup):
     choosing_category = State()
     entering_amount = State()
     entering_note = State()
     entering_date = State()
+    deleting_date = State()
     deleting = State()
 
 
-class CategoryManage(StatesGroup):
-    entering_name = State()
+class BeaconDevice(StatesGroup):
+    """Referens qurilma qo'shish."""
+    waiting_label = State()
 
 
 class Broadcast(StatesGroup):

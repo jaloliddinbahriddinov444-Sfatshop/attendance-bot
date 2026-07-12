@@ -5,9 +5,8 @@ import logging
 from datetime import datetime
 from tzutil import now as tz_now, to_local
 from aiogram import Router, F, Bot
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 import texts
 import keyboards as kb
@@ -20,7 +19,9 @@ from database import (
     get_day_attendance,
     set_hourly_rate, add_salary_entry, cancel_salary_entry,
     get_salary_entry, get_active_salary_entries,
-    is_month_closed, close_month, reopen_month,
+    is_month_closed, close_month, reopen_month, get_closed_months,
+    get_monthly_finance_entries, get_monthly_finance_summary,
+    get_finance_balance_before,
     get_audit_entries, get_all_employees_salary_summary,
     get_monthly_worked_minutes, get_salary_totals_by_type,
     create_task, set_role, get_boss, get_bosses,
@@ -392,24 +393,6 @@ async def admin_today(message: Message):
                 text += texts.ADMIN_TODAY_ITEM_ABSENT.format(name=rec["full_name"])
 
     await message.answer(text)
-
-
-# ===== VAQTINCHALIK: bazani yuklab olish (migratsiya uchun) =====
-
-@router.message(Command("getdb"))
-async def getdb_temp(message: Message):
-    """Vaqtinchalik: faqat bosh admin uchun — attendance.db faylini yuboradi.
-    Migratsiyadan keyin bu funksiyani o'chirib tashlash kerak."""
-    from config import INITIAL_ADMIN_ID, DB_PATH
-    if message.from_user.id != INITIAL_ADMIN_ID:
-        return
-    try:
-        await message.answer_document(
-            FSInputFile(str(DB_PATH)),
-            caption="🗄 attendance.db — vaqtinchalik export (migratsiya uchun)"
-        )
-    except Exception as e:
-        await message.answer(f"❌ Xato: {e}")
 
 
 # ===== Excel hisobot =====
@@ -850,7 +833,7 @@ async def admin_rate_save(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         texts.ADMIN_RATE_SAVED.format(name=emp["full_name"], rate=rate),
-        reply_markup=_section_kb(message, "finance")
+        reply_markup=_section_kb(message, "employees")
     )
 
 
@@ -1079,7 +1062,7 @@ async def _do_save_salary(message: Message, state: FSMContext, bot: Bot, data: d
             name=data["sal_emp_name"],
             amount=data["sal_amount"], reason=reason
         ),
-        reply_markup=_section_kb(message, "finance")
+        reply_markup=_section_kb(message, "employees")
     )
 
     # Bildirishnoma
@@ -1203,7 +1186,7 @@ async def admin_salary_cancel_save(message: Message, state: FSMContext, bot: Bot
             emoji=type_info[0], type_name=type_info[1],
             amount=data["sal_cancel_amount"], cancel_reason=cancel_reason
         ),
-        reply_markup=_section_kb(message, "finance")
+        reply_markup=_section_kb(message, "employees")
     )
 
     # Bildirishnoma
@@ -1222,6 +1205,7 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     """Excel fayl: barcha xodimlarning oylik ish haqqi"""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
 
     wb = Workbook()
 
@@ -1237,7 +1221,7 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=12)
     ws.row_dimensions[1].height = 25
 
-    headers = ["№", "Xodim", "Lavozim", "Soat", "Stavka (so'm/s)",
+    headers = ["№", "Xodim", "Lavozim", "Soat", "Kunlik stavka",
                "Asosiy ish haqqi", "Avans", "Jarima", "Mukofot", "Bonus",
                "Mahsulot", "JAMI (so'm)"]
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -1258,18 +1242,24 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
         emp = item["employee"]
         row = idx + 3
         hours_str = f"{item['minutes'] // 60}s {item['minutes'] % 60}d"
-        values = [idx, emp["full_name"], emp["position"], hours_str,
+        emp_active = bool(emp["is_active"]) if "is_active" in emp.keys() else True
+        name = emp["full_name"] + ("" if emp_active else " (o'chirilgan)")
+        values = [idx, name, emp["position"], hours_str,
                   item["rate"], item["base"],
                   -item["totals"]["avans"], -item["totals"]["jarima"],
                   item["totals"]["mukofot"], item["totals"]["bonus"],
                   -item["totals"]["mahsulot"], item["total"]]
         for col, v in enumerate(values, 1):
-            c = ws.cell(row=row, column=col, value=v)
-            c.border = border
             if col == 12:
+                # JAMI = asosiy + avans + jarima + mukofot + bonus + mahsulot (F:K)
+                # Tirik formula: qiymatlar tahrirlansa avtomatik qayta hisoblanadi.
+                c = ws.cell(row=row, column=col, value=f"=SUM(F{row}:K{row})")
                 c.font = Font(bold=True)
-                if v > 0:
+                if item["total"] > 0:
                     c.fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+            else:
+                c = ws.cell(row=row, column=col, value=v)
+            c.border = border
             if col in (5, 6, 7, 8, 9, 10, 11, 12):
                 c.number_format = '#,##0'
         grand_total += item["total"]
@@ -1279,7 +1269,11 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     c = ws.cell(row=total_row, column=11, value="JAMI:")
     c.font = Font(bold=True)
     c.alignment = Alignment(horizontal="right")
-    c = ws.cell(row=total_row, column=12, value=grand_total)
+    if summary:
+        grand_formula = f"=SUM(L4:L{len(summary) + 3})"
+    else:
+        grand_formula = 0
+    c = ws.cell(row=total_row, column=12, value=grand_formula)
     c.font = Font(bold=True, size=12, color="FFFFFF")
     c.fill = PatternFill(start_color="2E5C8A", end_color="2E5C8A", fill_type="solid")
     c.number_format = '#,##0'
@@ -1287,7 +1281,7 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     # Ustun kengligi
     widths = [4, 25, 15, 10, 14, 16, 12, 12, 12, 12, 12, 16]
     for i, w in enumerate(widths, 1):
-        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+        ws.column_dimensions[get_column_letter(i)].width = w
 
     # Sheet 2: Yozuvlar tafsiloti
     ws2 = wb.create_sheet(title="Yozuvlar")
@@ -1327,32 +1321,115 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
 
     ws2_widths = [18, 25, 20, 14, 35, 20, 40]
     for i, w in enumerate(ws2_widths, 1):
-        ws2.column_dimensions[ws2.cell(row=1, column=i).column_letter].width = w
+        ws2.column_dimensions[get_column_letter(i)].width = w
 
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
 
 
-@router.callback_query(F.data == "sal_report")
-async def admin_salary_report(call: CallbackQuery, state: FSMContext, bot: Bot):
+async def _send_month_archive(call: CallbackQuery, me, year: int, month: int):
+    """Tanlangan oy uchun: 1) ish haqi (payroll) Excel, 2) moliya (kirim/chiqim) Excel."""
+    # 1) Ish haqi hisoboti
+    pay = await asyncio.to_thread(_generate_salary_excel, year, month)
+    await call.message.answer_document(
+        BufferedInputFile(pay, filename=f"ish_haqqi_{year}_{month:02d}.xlsx"),
+        caption=f"💵 Ish haqi hisoboti — {texts.MONTHS_UZ[month]} {year}"
+    )
+    # 2) Moliya (kirim/chiqim) daftari — yozuv bo'lsa
+    entries = get_monthly_finance_entries(me["id"], year, month)
+    if entries:
+        from handlers.finance import _build_finance_excel
+        summary = get_monthly_finance_summary(me["id"], year, month)
+        opening = get_finance_balance_before(me["id"], year, month)
+        fin = await asyncio.to_thread(
+            _build_finance_excel, entries, summary, year, month,
+            me["full_name"], opening
+        )
+        await call.message.answer_document(
+            BufferedInputFile(fin, filename=f"moliya_{year}_{month:02d}.xlsx"),
+            caption=f"💰 Moliya (kirim/chiqim) — {texts.MONTHS_UZ[month]} {year}"
+        )
+    else:
+        await call.message.answer(
+            f"ℹ️ {texts.MONTHS_UZ[month]} {year} uchun moliya (kirim/chiqim) yozuvi yo'q."
+        )
+
+
+@router.callback_query(F.data == "sal_archive")
+async def admin_salary_archive(call: CallbackQuery, state: FSMContext):
     me = get_employee_by_telegram_id(call.from_user.id)
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
 
-    await call.message.edit_text(texts.SAL_REPORT_GENERATING)
+    now = tz_now()
+    seen = set()
+    rows = []
+    # Joriy oy (qulaylik uchun — hali yopilmagan bo'lsa ham)
+    rows.append([InlineKeyboardButton(
+        text=f"📅 {texts.MONTHS_UZ[now.month]} {now.year} (joriy)",
+        callback_data=f"sal_arc:{now.year}:{now.month}"
+    )])
+    seen.add((now.year, now.month))
+    # Oxirgi 10 ta yopilgan oy
+    for m in get_closed_months(10):
+        key = (m["year"], m["month"])
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append([InlineKeyboardButton(
+            text=f"🔒 {texts.MONTHS_UZ[m['month']]} {m['year']}",
+            callback_data=f"sal_arc:{m['year']}:{m['month']}"
+        )])
+    rows.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data="sal_back_menu")])
+
+    await call.message.edit_text(
+        "📂 <b>Arxiv — eski oylar</b>\n\n"
+        "Oyni tanlang. O'sha oy uchun <b>ish haqi</b> va <b>moliya (kirim/chiqim)</b> "
+        "hisobotlari yuklanadi.\n\n"
+        "🔒 — yopilgan oy · 📅 — joriy oy",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
     await call.answer()
 
-    now = tz_now()
-    year, month = now.year, now.month
-    file_bytes = await asyncio.to_thread(_generate_salary_excel, year, month)
 
-    await call.message.answer_document(
-        BufferedInputFile(file_bytes, filename=f"ish_haqqi_{year}_{month:02d}.xlsx"),
-        caption=texts.SAL_REPORT_DONE.format(month=texts.MONTHS_UZ[month], year=year),
-        reply_markup=_admin_kb(call)
+@router.callback_query(F.data.startswith("sal_arc:"))
+async def admin_salary_archive_month(call: CallbackQuery, state: FSMContext):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    parts = call.data.split(":")
+    try:
+        year, month = int(parts[1]), int(parts[2])
+    except (IndexError, ValueError):
+        await call.answer("❌ Xato", show_alert=True)
+        return
+
+    await call.message.edit_text(
+        f"⏳ {texts.MONTHS_UZ[month]} {year} hisobotlari tayyorlanmoqda..."
     )
+    await call.answer()
+    try:
+        await _send_month_archive(call, me, year, month)
+    except Exception as e:
+        logger.error(f"sal_arc xato: {e}")
+        await call.message.answer("❌ Arxiv hisobotini yuklab bo'lmadi.")
+        return
+    await call.message.answer("✅ Arxiv tayyor.", reply_markup=_admin_kb(call))
+
+
+@router.callback_query(F.data == "sal_back_menu")
+async def admin_salary_back_menu(call: CallbackQuery, state: FSMContext):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    await call.message.edit_text(
+        texts.SALARY_ADMIN_MENU, reply_markup=kb.salary_admin_menu_kb()
+    )
+    await call.answer()
 
 
 # ===== Phase 3: Audit tarixi =====
@@ -1583,9 +1660,9 @@ def _parse_deadline(text: str):
             continue
     if parsed is None:
         return None
-    # Local Tashkent -> UTC saqlash
+    # Local Tashkent -> UTC saqlash (bo'sh joyli format — datetime('now') bilan bir xil)
     from tzutil import OFFSET
-    return (parsed - OFFSET).isoformat()
+    return (parsed - OFFSET).isoformat(sep=' ')
 
 
 @router.message(TaskCreate.entering_deadline, F.text)

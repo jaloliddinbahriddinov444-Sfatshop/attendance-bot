@@ -2,15 +2,18 @@
 import logging
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.filters import StateFilter
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+)
 
 import texts
 import keyboards as kb
 from states import PositionManage, EmployeePositionSet
 from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
-    get_all_positions, get_position, create_position, delete_position,
-    set_employee_position,
+    get_all_positions, get_position, create_position, update_position,
+    delete_position, set_employee_position,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,10 +62,16 @@ async def positions_menu(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
     for p in positions:
-        rows.append([InlineKeyboardButton(
-            text=f"🗑 {p['name']}",
-            callback_data=f"pos_del:{p['id']}"
-        )])
+        rows.append([
+            InlineKeyboardButton(
+                text=f"✏️ {p['name']}",
+                callback_data=f"pos_edit:{p['id']}"
+            ),
+            InlineKeyboardButton(
+                text="🗑",
+                callback_data=f"pos_del:{p['id']}"
+            ),
+        ])
     rows.append([InlineKeyboardButton(
         text=texts.BTN_POS_ADD, callback_data="pos_add"
     )])
@@ -177,6 +186,118 @@ async def pos_delete(call: CallbackQuery):
     await call.message.edit_text(texts.POS_DELETED.format(name=pos["name"]))
     await call.answer("✅")
     logger.info("Position deleted id=%s by tg=%s", pos_id, call.from_user.id)
+
+
+# ===== Lavozimni tahrirlash =====
+
+@router.callback_query(F.data.startswith("pos_edit:"))
+async def pos_edit_start(call: CallbackQuery, state: FSMContext):
+    if not _is_bosh_admin(call):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    pos_id = int(call.data.split(":")[1])
+    pos = get_position(pos_id)
+    if not pos:
+        await call.answer("Topilmadi", show_alert=True)
+        return
+    await state.update_data(pe_pos_id=pos_id)
+    await state.set_state(PositionManage.edit_choose_field)
+    await call.message.answer(
+        texts.POS_EDIT_PICK_FIELD.format(
+            name=pos["name"], hours=pos["work_hours"],
+            min=pos["min_rate"], max=pos["max_rate"]
+        ),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=texts.BTN_POS_EF_HOURS, callback_data="pos_ef:hours"),
+             InlineKeyboardButton(text=texts.BTN_POS_EF_NAME, callback_data="pos_ef:name")],
+            [InlineKeyboardButton(text=texts.BTN_POS_EF_MIN, callback_data="pos_ef:min"),
+             InlineKeyboardButton(text=texts.BTN_POS_EF_MAX, callback_data="pos_ef:max")],
+            [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="pos_ef:cancel")],
+        ])
+    )
+    await call.answer()
+
+
+@router.callback_query(PositionManage.edit_choose_field, F.data.startswith("pos_ef:"))
+async def pos_edit_field(call: CallbackQuery, state: FSMContext):
+    field = call.data.split(":")[1]
+    if field == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    await state.update_data(pe_field=field)
+    prompts = {
+        "hours": texts.POS_EDIT_ASK_HOURS,
+        "min": texts.POS_EDIT_ASK_MIN,
+        "max": texts.POS_EDIT_ASK_MAX,
+        "name": texts.POS_EDIT_ASK_NAME,
+    }
+    await call.message.answer(prompts[field], reply_markup=kb.cancel_kb())
+    await state.set_state(PositionManage.edit_value)
+    await call.answer()
+
+
+@router.message(StateFilter(PositionManage.edit_value), F.text == texts.BTN_CANCEL)
+async def pos_edit_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    emp = get_employee_by_telegram_id(message.from_user.id)
+    await message.answer(
+        texts.CANCELLED,
+        reply_markup=kb.admin_menu_kb(is_bosh_admin=(emp and emp["role"] == "bosh_admin"))
+    )
+
+
+@router.message(PositionManage.edit_value, F.text)
+async def pos_edit_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    pos_id = data.get("pe_pos_id")
+    field = data.get("pe_field")
+    pos = get_position(pos_id) if pos_id else None
+    if not pos:
+        await state.clear()
+        await message.answer("❌ Lavozim topilmadi.")
+        return
+
+    txt = message.text.strip()
+    kwargs = {}
+    if field == "hours":
+        try:
+            hours = float(txt.replace(",", "."))
+            assert 0.5 <= hours <= 24.0
+        except Exception:
+            await message.answer(texts.POS_HOURS_INVALID)
+            return
+        kwargs["work_hours"] = hours
+    elif field in ("min", "max"):
+        try:
+            rate = int(txt.replace(" ", "").replace(",", ""))
+            assert rate > 0
+        except Exception:
+            await message.answer(texts.POS_RATE_INVALID)
+            return
+        kwargs["min_rate" if field == "min" else "max_rate"] = rate
+    elif field == "name":
+        if len(txt) < 3:
+            await message.answer(texts.POS_NAME_SHORT)
+            return
+        kwargs["name"] = txt
+    else:
+        await state.clear()
+        return
+
+    update_position(pos_id, **kwargs)
+    await state.clear()
+    pos = get_position(pos_id)
+    emp = get_employee_by_telegram_id(message.from_user.id)
+    await message.answer(
+        texts.POS_EDIT_DONE.format(
+            name=pos["name"], hours=pos["work_hours"],
+            min=pos["min_rate"], max=pos["max_rate"]
+        ),
+        reply_markup=kb.admin_menu_kb(is_bosh_admin=(emp and emp["role"] == "bosh_admin"))
+    )
+    logger.info("Position %s edited (%s) by tg=%s", pos_id, field, message.from_user.id)
 
 
 # ===== Xodimga lavozim + stavka belgilash =====

@@ -32,6 +32,11 @@ _bot = None
 _notified_ips: dict = {}
 NOTIFY_COOLDOWN = 3600  # bir xil IP uchun soatiga 1 marta
 
+# Referens qurilma (beacon) — ofis WiFi'sidagi doim yoqilgan qurilma /beacon ni
+# ochib turadi va joriy ofis IP'sini yangilaydi.
+BEACON_VALID_SEC = 7 * 24 * 3600   # oxirgi signal shu muddat ichida bo'lsa, IP ishonchli
+BEACON_STALE_SEC = 30 * 60          # 30 daqiqadan beri signal yo'q bo'lsa — "eskirgan"
+
 # ===== HTML sahifa: kamera + yuklash =====
 
 def _build_camera_html(token: str, employee_name: str) -> str:
@@ -172,10 +177,16 @@ document.getElementById('cameraInput').addEventListener('change', async (e) => {
     document.getElementById('captureSection').style.display = 'none';
     document.getElementById('loadingSection').className = 'loading show';
 
+    // Rasmni browserda kichraytirib JPEG ga aylantirish (tez upload, HEIC muammosi yoʻq)
+    let uploadBlob = file;
+    try {{
+        uploadBlob = await resizeImage(file, 1000, 0.85);
+    }} catch (err) {{ uploadBlob = file; }}
+
     // Serverga yuklash
     try {{
         const formData = new FormData();
-        formData.append('photo', file);
+        formData.append('photo', uploadBlob, 'selfie.jpg');
 
         const resp = await fetch('/verify/' + TOKEN + '/upload', {{
             method: 'POST',
@@ -201,6 +212,27 @@ function showError(msg) {{
     document.getElementById('errorResult').className = 'result error';
     document.getElementById('captureSection').style.display = 'none';
     document.getElementById('loadingSection').className = 'loading';
+}}
+
+function resizeImage(file, maxSize, quality) {{
+    return new Promise((resolve, reject) => {{
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {{
+            URL.revokeObjectURL(url);
+            let w = img.width, h = img.height;
+            if (Math.max(w, h) > maxSize) {{
+                if (w >= h) {{ h = Math.round(h * maxSize / w); w = maxSize; }}
+                else {{ w = Math.round(w * maxSize / h); h = maxSize; }}
+            }}
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob')), 'image/jpeg', quality);
+        }};
+        img.onerror = () => {{ URL.revokeObjectURL(url); reject(new Error('imgload')); }};
+        img.src = url;
+    }});
 }}
 </script>
 </body>
@@ -366,9 +398,14 @@ def _is_office_ip(client_ip: str) -> bool:
     qoplaydi: bir blokdagi barcha IP'lar bitta qoidaga sig'adi. Ro'yxat bo'sh
     bo'lsa — local rejim, hamma ruxsat etiladi.
     """
-    from database import get_office_ips
+    from database import get_office_ips, get_active_beacon_nets
     ips = get_office_ips()
-    if not ips:
+
+    # Referens qurilmalar bergan joriy ofis diapazonlari (avtomatik, qo'lda yangilashsiz)
+    beacon_nets = get_active_beacon_nets(BEACON_VALID_SEC)
+
+    # Na whitelist, na faol beacon — filtr yo'q (local rejim), hammaga ruxsat
+    if not ips and not beacon_nets:
         return True
 
     client_ip = (client_ip or "").strip()
@@ -378,6 +415,15 @@ def _is_office_ip(client_ip: str) -> bool:
         # Noto'g'ri format — eski xatti-harakat (aniq matn tengligi)
         return client_ip in ips
 
+    # 1) Beacon qurilmalari diapazonlari (asosiy — dinamik IP'ni avtomatik qoplaydi)
+    for bnet in beacon_nets:
+        try:
+            if client in ipaddress.ip_network(bnet, strict=False):
+                return True
+        except ValueError:
+            pass
+
+    # 2) Qo'lda kiritilgan whitelist (zaxira / qo'shimcha)
     for entry in ips:
         entry = (entry or "").strip()
         if not entry:
@@ -544,6 +590,42 @@ async def _setip_handler(request: web.Request) -> web.Response:
                         content_type="text/html")
 
 
+async def _beacon_handler(request: web.Request) -> web.Response:
+    """Referens qurilma vaqti-vaqti bilan chaqiradi → joriy ofis public IP yangilanadi.
+
+    URL: GET /beacon/{secret}. Secret DB'dagi `beacon_secret` bilan mos kelishi shart —
+    aks holda istalgan odam ofis IP'sini o'zgartira olardi.
+    """
+    secret = request.match_info.get("secret", "")
+    from database import get_beacon_device_by_secret, update_beacon_device_ping
+    dev = get_beacon_device_by_secret(secret)
+    if not dev:
+        logger.warning("Beacon: noma'lum secret (ip=%s)", _get_client_ip(request))
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+
+    client_ip = _get_client_ip(request)
+    net = to_office_network(client_ip)  # /24 diapazon sifatida saqlaymiz
+    prev_net = dev["last_net"] or ""
+    update_beacon_device_ping(secret, client_ip, net, time.time())
+
+    # Shu qurilma uchun ofis IP diapazoni haqiqatan o'zgardi — Bosh Adminni bir marta xabardor qilamiz
+    if prev_net and prev_net != net and _bot is not None:
+        try:
+            from database import get_bosh_admin
+            ba = get_bosh_admin()
+            if ba:
+                await _bot.send_message(
+                    ba["telegram_id"],
+                    texts.BEACON_IP_CHANGED.format(old=prev_net, new=net),
+                )
+        except Exception:
+            logger.exception("beacon o'zgarishi haqida xabar berishda xato")
+
+    logger.info("Beacon ping: dev=%s ip=%s net=%s (oldingi=%s)",
+                dev["label"], client_ip, net, prev_net or "—")
+    return web.json_response({"ok": True, "ip": client_ip, "net": net})
+
+
 def get_local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -567,6 +649,7 @@ async def start_verify_server(bot=None, port: int = None) -> web.AppRunner:
     app.router.add_get("/verify/{token}", _page_handler)
     app.router.add_post("/verify/{token}/upload", _upload_handler)
     app.router.add_get("/setip/{token}", _setip_handler)
+    app.router.add_get("/beacon/{secret}", _beacon_handler)
     # Sog'liq tekshiruvi (Render uchun)
     app.router.add_get("/health", lambda r: web.Response(text="OK"))
 

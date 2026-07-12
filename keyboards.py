@@ -4,8 +4,10 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton
 )
 import texts
-import catutil
-import database
+from database import (
+    get_finance_categories, get_finance_personal_categories,
+    finance_category_label,
+)
 
 
 def remove_kb():
@@ -103,8 +105,7 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
             keyboard=[
                 [KeyboardButton(text=texts.BTN_GRP_EMPLOYEES),
                  KeyboardButton(text=texts.BTN_GRP_ATTENDANCE)],
-                [KeyboardButton(text=texts.BTN_GRP_FINANCE),
-                 KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
+                [KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
                 [KeyboardButton(text=texts.BTN_GRP_CONTROL)],
                 [KeyboardButton(text=texts.BTN_BACK)],
             ],
@@ -135,11 +136,12 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
 def grp_employees_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE)],
-            [KeyboardButton(text=texts.BTN_SET_POSITION)],
-            [KeyboardButton(text=texts.BTN_ADMIN_LIST)],
-            [KeyboardButton(text=texts.BTN_ADMIN_REMOVE)],
-            [KeyboardButton(text=texts.BTN_ADMIN_EMP_EXCEL)],
+            [KeyboardButton(text=texts.BTN_ADMIN_LIST),
+             KeyboardButton(text=texts.BTN_ADMIN_EMP_EXCEL)],
+            [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE),
+             KeyboardButton(text=texts.BTN_ADMIN_REMOVE)],
+            [KeyboardButton(text=texts.BTN_SET_POSITION),
+             KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
         ],
         resize_keyboard=True,
@@ -160,9 +162,7 @@ def grp_attendance_kb() -> ReplyKeyboardMarkup:
 def grp_finance_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_RATES),
-             KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
-            [KeyboardButton(text=texts.BTN_ADMIN_EXPORT)],
+            [KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
             [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
         ],
         resize_keyboard=True,
@@ -174,7 +174,8 @@ def grp_control_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
             [KeyboardButton(text=texts.BTN_OFFICE_IP)],
-            [KeyboardButton(text=texts.BTN_POSITIONS)],
+            [KeyboardButton(text=texts.BTN_POSITIONS),
+             KeyboardButton(text=texts.BTN_FINANCE_CATEGORIES)],
             [KeyboardButton(text=texts.BTN_ADMIN_PROMOTE),
              KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)],
             [KeyboardButton(text=texts.BTN_BROADCAST)],
@@ -190,6 +191,7 @@ def ip_menu_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=texts.BTN_OFFICE_IP_ADD)],
             [KeyboardButton(text=texts.BTN_OFFICE_IP_LIST)],
+            [KeyboardButton(text=texts.BTN_OFFICE_BEACON)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
         resize_keyboard=True,
@@ -235,7 +237,7 @@ def salary_admin_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Yozuv qo'shish", callback_data="sal_add"),
          InlineKeyboardButton(text="❌ Bekor qilish", callback_data="sal_cancel")],
-        [InlineKeyboardButton(text="📊 Excel hisobot", callback_data="sal_report"),
+        [InlineKeyboardButton(text="📂 Arxiv (eski oylar)", callback_data="sal_archive"),
          InlineKeyboardButton(text="📜 Audit tarixi", callback_data="sal_audit")],
         [InlineKeyboardButton(text="🔒 Oyni yopish/ochish", callback_data="sal_close_month")],
         [InlineKeyboardButton(text="🚪 Yopish", callback_data="sal_close")],
@@ -386,8 +388,8 @@ def finance_menu_kb() -> ReplyKeyboardMarkup:
              KeyboardButton(text=texts.BTN_FINANCE_EXPENSE)],
             [KeyboardButton(text=texts.BTN_FINANCE_SUMMARY),
              KeyboardButton(text=texts.BTN_FINANCE_EXCEL)],
-            [KeyboardButton(text=texts.BTN_FINANCE_DELETE),
-             KeyboardButton(text=texts.BTN_CATEGORY_MANAGE)],
+            [KeyboardButton(text=texts.BTN_FINANCE_DELETE)],
+            [KeyboardButton(text=texts.BTN_FINANCE_CATEGORIES)],
             [KeyboardButton(text=texts.BTN_PERSONAL_FINANCE)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
@@ -403,15 +405,14 @@ def pf_menu_kb() -> ReplyKeyboardMarkup:
              KeyboardButton(text=texts.BTN_PF_EXPENSE)],
             [KeyboardButton(text=texts.BTN_PF_SUMMARY),
              KeyboardButton(text=texts.BTN_PF_EXCEL)],
-            [KeyboardButton(text=texts.BTN_PF_DELETE),
-             KeyboardButton(text=texts.BTN_CATEGORY_MANAGE)],
+            [KeyboardButton(text=texts.BTN_PF_DELETE)],
             [KeyboardButton(text=texts.BTN_BACK)],
         ],
         resize_keyboard=True
     )
 
 
-def pf_income_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
+def pf_income_cats_kb() -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(
             text=f"{emoji} {name}",
@@ -419,18 +420,13 @@ def pf_income_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
         )]
         for key, (emoji, name) in texts.PF_INCOME_CATS.items()
     ]
-    for c in database.get_custom_categories(owner_id, "pf", "income"):
-        rows.append([InlineKeyboardButton(
-            text=f"{c['emoji']} {c['name']}",
-            callback_data=f"pf_cat:income:c{c['id']}"
-        )])
     rows.append([InlineKeyboardButton(
         text=texts.BTN_CANCEL, callback_data="pf_cat:cancel"
     )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def pf_expense_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
+def pf_expense_cats_kb() -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(
             text=f"{emoji} {name}",
@@ -438,11 +434,6 @@ def pf_expense_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
         )]
         for key, (emoji, name) in texts.PF_EXPENSE_CATS.items()
     ]
-    for c in database.get_custom_categories(owner_id, "pf", "expense"):
-        rows.append([InlineKeyboardButton(
-            text=f"{c['emoji']} {c['name']}",
-            callback_data=f"pf_cat:expense:c{c['id']}"
-        )])
     rows.append([InlineKeyboardButton(
         text=texts.BTN_CANCEL, callback_data="pf_cat:cancel"
     )])
@@ -470,13 +461,17 @@ def pf_date_kb() -> ReplyKeyboardMarkup:
 
 
 def pf_entries_kb(entries) -> InlineKeyboardMarkup:
-    """O'chirish uchun yozuvlar ro'yxati."""
+    """O'chirish uchun yozuvlar ro'yxati (bir kun ichidagi — izoh bilan farqlanadi)."""
     rows = []
     for e in entries:
-        emoji, name = catutil.resolve_category(e["category"], "pf")
-        sign = "+" if e["entry_type"] == "income" else "-"
+        cat_info = texts.PF_ALL_CATS.get(e["category"], ("📋", e["category"]))
+        emoji, name = cat_info
+        sign = "➕" if e["entry_type"] == "income" else "➖"
+        note = (e["note"] or "").strip()
+        extra = f" · {note[:16]}" if note else ""
+        text = f"{sign} {e['amount']:,} {emoji}{name}{extra}"
         rows.append([InlineKeyboardButton(
-            text=f"{sign}{e['amount']:,} — {emoji}{name} ({e['entry_date'][5:]})",
+            text=text[:62],
             callback_data=f"pf_del:{e['id']}"
         )])
     rows.append([InlineKeyboardButton(
@@ -486,18 +481,13 @@ def pf_entries_kb(entries) -> InlineKeyboardMarkup:
 
 
 def finance_personal_cats_kb(owner_id: int) -> InlineKeyboardMarkup:
-    """Shaxsiy xarajatlar ichki turkumlari."""
+    """Shaxsiy xarajatlar ichki turkumlari (egaga tegishli)."""
     rows = []
-    for key, (emoji, name) in texts.FINANCE_PERSONAL_CATEGORIES.items():
-        label = name.replace("Shaxsiy: ", "")
+    for cat in get_finance_personal_categories(owner_id):
+        label = cat["name"].replace("Shaxsiy: ", "")
         rows.append([InlineKeyboardButton(
-            text=f"{emoji} {label}",
-            callback_data=f"fin_cat:expense:{key}"
-        )])
-    for c in database.get_custom_categories(owner_id, "fin_personal", "expense"):
-        rows.append([InlineKeyboardButton(
-            text=f"{c['emoji']} {c['name']}",
-            callback_data=f"fin_cat:expense:c{c['id']}"
+            text=f"{cat['emoji']} {label}",
+            callback_data=f"fin_cat:expense:{cat['ckey']}"
         )])
     rows.append([InlineKeyboardButton(
         text="⬅️ Ortga", callback_data="fin_cat:expense:backexp"
@@ -520,7 +510,7 @@ def finance_del_entries_kb(entries) -> InlineKeyboardMarkup:
     """Sana bo'yicha yozuvlar — o'chirish uchun tanlash."""
     rows = []
     for e in entries:
-        cat_info = catutil.resolve_category(e["category"], "fin")
+        cat_info = finance_category_label(e["category"]) or ("📋", e["category"])
         sign = "➕" if e["entry_type"] == "income" else "➖"
         rows.append([InlineKeyboardButton(
             text=f"{sign} {e['amount']:,} — {cat_info[1]}",
@@ -542,82 +532,16 @@ def finance_del_confirm_kb(entry_id: int) -> InlineKeyboardMarkup:
 
 
 def finance_categories_kb(entry_type: str, owner_id: int) -> InlineKeyboardMarkup:
-    """Turkum tanlash — kirim va chiqim uchun alohida ro'yxatlar."""
-    if entry_type == "income":
-        cats = texts.FINANCE_INCOME_CATEGORIES
-    else:
-        cats = texts.FINANCE_EXPENSE_CATEGORIES
+    """Turkum tanlash — egaga tegishli kirim/chiqim ro'yxatlari (bazadan)."""
     rows = []
-    for key, (emoji, name) in cats.items():
+    for cat in get_finance_categories(entry_type, owner_id):
         rows.append([InlineKeyboardButton(
-            text=f"{emoji} {name}",
-            callback_data=f"fin_cat:{entry_type}:{key}"
-        )])
-    for c in database.get_custom_categories(owner_id, "fin", entry_type):
-        rows.append([InlineKeyboardButton(
-            text=f"{c['emoji']} {c['name']}",
-            callback_data=f"fin_cat:{entry_type}:c{c['id']}"
+            text=f"{cat['emoji']} {cat['name']}",
+            callback_data=f"fin_cat:{entry_type}:{cat['ckey']}"
         )])
     rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL,
                                       callback_data=f"fin_cat:{entry_type}:cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def ccat_sections_kb() -> InlineKeyboardMarkup:
-    """Turkumlar boshqaruvi — bo'lim tanlash."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=texts.CCAT_BTN_SECTION_FIN,
-                              callback_data="ccat:sec:fin")],
-        [InlineKeyboardButton(text=texts.CCAT_BTN_SECTION_PF,
-                              callback_data="ccat:sec:pf")],
-        [InlineKeyboardButton(text=texts.BTN_CANCEL,
-                              callback_data="ccat:close")],
-    ])
-
-
-def ccat_manage_kb(cats, src: str) -> InlineKeyboardMarkup:
-    """Maxsus turkumlar ro'yxati — har biri 🗑 bilan, + qo'shish/ortga."""
-    rows = []
-    for c in cats:
-        dest = texts.CCAT_DEST_LABELS.get((c["scope"], c["entry_type"]), "")
-        rows.append([InlineKeyboardButton(
-            text=f"🗑 {c['emoji']} {c['name']} · {dest}",
-            callback_data=f"ccat:del:{src}:{c['id']}"
-        )])
-    rows.append([InlineKeyboardButton(text=texts.CCAT_BTN_ADD,
-                                      callback_data=f"ccat:add:{src}")])
-    rows.append([InlineKeyboardButton(text="⬅️ Ortga",
-                                      callback_data="ccat:home"),
-                 InlineKeyboardButton(text=texts.BTN_CANCEL,
-                                      callback_data="ccat:close")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def ccat_dest_kb(src: str) -> InlineKeyboardMarkup:
-    """Yangi turkum qayerga qo'shilishini tanlash."""
-    if src == "fin":
-        dests = [("fin", "expense"), ("fin", "income"), ("fin_personal", "expense")]
-    else:
-        dests = [("pf", "income"), ("pf", "expense")]
-    rows = [
-        [InlineKeyboardButton(
-            text=texts.CCAT_DEST_LABELS[(scope, etype)],
-            callback_data=f"ccat:new:{scope}:{etype}"
-        )]
-        for scope, etype in dests
-    ]
-    rows.append([InlineKeyboardButton(text="⬅️ Ortga",
-                                      callback_data=f"ccat:back:{src}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def ccat_del_confirm_kb(src: str, cat_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=texts.CCAT_BTN_DEL_YES,
-                              callback_data=f"ccat:delc:{src}:{cat_id}"),
-         InlineKeyboardButton(text=texts.CCAT_BTN_DEL_NO,
-                              callback_data=f"ccat:back:{src}")],
-    ])
 
 
 def finance_employees_kb(employees) -> InlineKeyboardMarkup:

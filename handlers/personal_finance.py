@@ -1,8 +1,9 @@
 """Shaxsiy moliya — Boss va Bosh Admin uchun shaxsiy kirim/chiqim hisobkitob."""
 import io
-import calendar
+import asyncio
 import logging
 from datetime import datetime
+from html import escape as _esc
 
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
@@ -13,12 +14,11 @@ import keyboards as kb
 from database import (
     get_employee_by_telegram_id,
     pf_add_entry, pf_get_monthly,
-    pf_get_summary, pf_get_entry, pf_delete_entry,
-    pf_get_today_totals, get_custom_category_by_id,
+    pf_get_summary, pf_get_entry, pf_delete_entry, pf_balance_before,
+    pf_get_by_date,
 )
-from catutil import resolve_category, custom_id
 from states import PersonalFinance
-from tzutil import now as tz_now
+from tzutil import now as tz_now, fmt as fmt_local
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -65,8 +65,7 @@ async def pf_income_start(message: Message, state: FSMContext):
         return
     await state.clear()
     await state.update_data(pf_emp_id=me["id"], pf_type="income")
-    await message.answer(texts.PF_PICK_CAT_INCOME,
-                         reply_markup=kb.pf_income_cats_kb(me["id"]))
+    await message.answer(texts.PF_PICK_CAT_INCOME, reply_markup=kb.pf_income_cats_kb())
     await state.set_state(PersonalFinance.choosing_category)
 
 
@@ -80,8 +79,7 @@ async def pf_expense_start(message: Message, state: FSMContext):
         return
     await state.clear()
     await state.update_data(pf_emp_id=me["id"], pf_type="expense")
-    await message.answer(texts.PF_PICK_CAT_EXPENSE,
-                         reply_markup=kb.pf_expense_cats_kb(me["id"]))
+    await message.answer(texts.PF_PICK_CAT_EXPENSE, reply_markup=kb.pf_expense_cats_kb())
     await state.set_state(PersonalFinance.choosing_category)
 
 
@@ -90,31 +88,23 @@ async def pf_expense_start(message: Message, state: FSMContext):
 @router.callback_query(PersonalFinance.choosing_category, F.data.startswith("pf_cat:"))
 async def pf_cat_chosen(call: CallbackQuery, state: FSMContext):
     parts = call.data.split(":", 2)
-    # "pf_cat:cancel" 2 qismli keladi — uzunlik tekshiruvidan oldin ushlanadi
-    if parts[-1] == "cancel":
-        await state.clear()
-        await call.message.edit_text(texts.CANCELLED)
-        await call.answer()
-        return
     if len(parts) < 3:
         await call.answer()
         return
     _, entry_type, cat_key = parts
 
+    if cat_key == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
     all_cats = {**texts.PF_INCOME_CATS, **texts.PF_EXPENSE_CATS}
-    if cat_key in all_cats:
-        emoji, cat_name = all_cats[cat_key]
-    else:
-        data = await state.get_data()
-        cid = custom_id(cat_key)
-        row = get_custom_category_by_id(cid) if cid is not None else None
-        ok = (row and row["scope"] == "pf" and row["is_active"]
-              and row["owner_id"] == data.get("pf_emp_id")
-              and row["entry_type"] == entry_type)
-        if not ok:
-            await call.answer("Noma'lum kategoriya", show_alert=True)
-            return
-        emoji, cat_name = row["emoji"] or "🏷", row["name"]
+    if cat_key not in all_cats:
+        await call.answer("Noma'lum kategoriya", show_alert=True)
+        return
+
+    emoji, cat_name = all_cats[cat_key]
     await state.update_data(pf_cat_key=cat_key, pf_cat_name=f"{emoji} {cat_name}")
 
     await call.message.edit_text(
@@ -128,6 +118,10 @@ async def pf_cat_chosen(call: CallbackQuery, state: FSMContext):
 
 @router.message(PersonalFinance.entering_amount, F.text)
 async def pf_amount_entered(message: Message, state: FSMContext):
+    if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
+        await state.clear()
+        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        return
     raw = message.text.replace(" ", "").replace(",", "").replace(".", "")
     if not raw.isdigit() or int(raw) <= 0:
         await message.answer(texts.PF_AMOUNT_INVALID)
@@ -141,6 +135,10 @@ async def pf_amount_entered(message: Message, state: FSMContext):
 
 @router.message(PersonalFinance.entering_note, F.text)
 async def pf_note_entered(message: Message, state: FSMContext):
+    if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
+        await state.clear()
+        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        return
     note = "" if message.text == texts.BTN_PF_NOTE_SKIP else message.text
     await state.update_data(pf_note=note)
     await message.answer(texts.PF_ENTER_DATE, reply_markup=kb.pf_date_kb())
@@ -152,6 +150,10 @@ async def pf_note_entered(message: Message, state: FSMContext):
 @router.message(PersonalFinance.entering_date, F.text)
 async def pf_date_entered(message: Message, state: FSMContext):
     raw = message.text.strip()
+    if raw in (texts.BTN_CANCEL, texts.BTN_BACK):
+        await state.clear()
+        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        return
     if raw == texts.BTN_PF_TODAY:
         entry_date = tz_now().date()
     else:
@@ -204,7 +206,7 @@ async def pf_summary(message: Message, state: FSMContext):
         for (etype, cat_key), amount in summary["by_cat"].items():
             if etype != "income":
                 continue
-            emoji, name = resolve_category(cat_key, "pf")
+            emoji, name = texts.PF_INCOME_CATS.get(cat_key, ("📋", cat_key))
             out += texts.PF_SUMMARY_LINE.format(emoji=emoji, name=name, amount=amount)
 
     # Chiqim
@@ -213,7 +215,7 @@ async def pf_summary(message: Message, state: FSMContext):
         for (etype, cat_key), amount in summary["by_cat"].items():
             if etype != "expense":
                 continue
-            emoji, name = resolve_category(cat_key, "pf")
+            emoji, name = texts.PF_EXPENSE_CATS.get(cat_key, ("📋", cat_key))
             out += texts.PF_SUMMARY_LINE.format(emoji=emoji, name=name, amount=amount)
 
     # Sof
@@ -222,24 +224,6 @@ async def pf_summary(message: Message, state: FSMContext):
         out += texts.PF_SUMMARY_NET_PLUS.format(net=net)
     else:
         out += texts.PF_SUMMARY_NET_MINUS.format(net=abs(net))
-
-    # Bugungi chiqim + kunlik byudjet
-    today = pf_get_today_totals(me["id"], now.strftime("%Y-%m-%d"))
-    if today["expense"] > 0:
-        out += texts.PF_SUMMARY_TODAY.format(today=today["expense"])
-    else:
-        out += texts.PF_SUMMARY_TODAY_NONE
-
-    days_in_month = calendar.monthrange(now.year, now.month)[1]
-    remaining_days = max(days_in_month - now.day, 1)
-    qoldiq = net
-    if qoldiq <= 0:
-        out += texts.PF_SUMMARY_NO_LIMIT
-    else:
-        out += texts.PF_SUMMARY_BUDGET.format(
-            qoldiq=qoldiq, days=remaining_days,
-            limit=qoldiq // remaining_days
-        )
 
     await message.answer(out)
 
@@ -254,75 +238,209 @@ async def pf_excel(message: Message, state: FSMContext):
         return
     await state.clear()
 
-    try:
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
-    except ImportError:
-        await message.answer("❌ openpyxl kutubxonasi yo'q.")
-        return
-
     now = tz_now()
     entries = pf_get_monthly(me["id"], now.year, now.month)
-    month_name = texts.MONTHS_UZ[now.month]
+    if not entries:
+        await message.answer(texts.PF_EXCEL_EMPTY)
+        return
 
-    wb = openpyxl.Workbook()
+    opening = pf_balance_before(me["id"], now.year, now.month)
+    file_bytes = await asyncio.to_thread(
+        _build_pf_excel, entries, now.year, now.month, me["full_name"], opening
+    )
+    filename = f"shaxsiy_moliya_{now.year}_{now.month:02d}.xlsx"
+    await message.answer_document(
+        BufferedInputFile(file_bytes, filename=filename),
+        caption=f"📥 Shaxsiy moliya — {texts.MONTHS_UZ[now.month]} {now.year}"
+    )
+
+
+def _build_pf_excel(entries, year: int, month: int,
+                    owner_name: str, opening: int = 0) -> bytes:
+    """Shaxsiy moliya Excel — biznes moliya (finance) formati bilan bir xil."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    # Qoldiq to'g'ri yig'ilishi uchun ASC (sana, id)
+    entries = sorted(entries, key=lambda e: (str(e["entry_date"]), e["id"]))
+
+    def _cat(cat):
+        info = texts.PF_ALL_CATS.get(cat, ("📋", cat))
+        return f"{info[0]} {info[1]}"
+
+    def _sana(e):
+        try:
+            return datetime.strptime(str(e["entry_date"])[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+        except (ValueError, TypeError):
+            return str(e["entry_date"])
+
+    def _vaqt(e):
+        try:
+            return fmt_local(e["created_at"], "%H:%M")
+        except Exception:
+            return ""
+
+    wb = Workbook()
     ws = wb.active
-    ws.title = f"Shaxsiy {month_name} {now.year}"
+    ws.title = "Yozuvlar"
 
-    # Sarlavha
-    header_fill = PatternFill("solid", fgColor="1F4E79")
-    header_font = Font(color="FFFFFF", bold=True)
-    headers = ["#", "Sana", "Tur", "Kategoriya", "Summa (so'm)", "Izoh"]
-    col_widths = [5, 12, 10, 22, 16, 30]
-    for col_idx, (h, w) in enumerate(zip(headers, col_widths), 1):
-        cell = ws.cell(row=1, column=col_idx, value=h)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
-        ws.column_dimensions[
-            openpyxl.utils.get_column_letter(col_idx)
-        ].width = w
+    title = ws.cell(row=1, column=1,
+                    value=f"📊 Shaxsiy — {owner_name} · {texts.MONTHS_UZ[month]} {year}")
+    title.font = Font(bold=True, size=14, color="FFFFFF")
+    title.fill = PatternFill(start_color="2E5C8A", end_color="2E5C8A", fill_type="solid")
+    title.alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+    ws.row_dimensions[1].height = 22
 
-    income_fill = PatternFill("solid", fgColor="E2EFDA")
-    expense_fill = PatternFill("solid", fgColor="FDECEA")
+    headers = ["Sana", "Vaqt", "Kategoriya", "Izoh",
+               "Rasxod (so'm)", "Kirim (so'm)", "Qoldiq (so'm)"]
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    thin = Side(border_style="thin", color="808080")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=3, column=col, value=h)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = header_fill
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = border
 
-    for row_idx, e in enumerate(entries, 2):
-        etype = "Kirim" if e["entry_type"] == "income" else "Chiqim"
-        cat_info = resolve_category(e["category"], "pf")
-        cat_name = f"{cat_info[0]} {cat_info[1]}"
-        fill = income_fill if e["entry_type"] == "income" else expense_fill
-        row_data = [row_idx - 1, e["entry_date"], etype,
-                    cat_name, e["amount"], e["note"] or ""]
-        for col_idx, val in enumerate(row_data, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=val)
-            cell.fill = fill
+    # Boshlang'ich qoldiq (oldingi oylardan)
+    pm = month - 1 if month > 1 else 12
+    open_row = 4
+    open_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+    ws.cell(row=open_row, column=3,
+            value=f"📦 {texts.MONTHS_UZ[pm]} oyidan qolgan qoldiq")
+    oc = ws.cell(row=open_row, column=7, value=opening)
+    oc.number_format = '#,##0'
+    oc.font = Font(bold=True)
+    for c in range(1, 8):
+        cell = ws.cell(row=open_row, column=c)
+        cell.border = border
+        cell.fill = open_fill
 
-    # Jami
-    if entries:
-        total_row = len(entries) + 3
-        income_sum = sum(e["amount"] for e in entries if e["entry_type"] == "income")
-        expense_sum = sum(e["amount"] for e in entries if e["entry_type"] == "expense")
-        ws.cell(row=total_row, column=3, value="Jami kirim:").font = Font(bold=True)
-        ws.cell(row=total_row, column=5, value=income_sum).font = Font(bold=True, color="006100")
-        ws.cell(row=total_row + 1, column=3, value="Jami chiqim:").font = Font(bold=True)
-        ws.cell(row=total_row + 1, column=5, value=expense_sum).font = Font(bold=True, color="9C0006")
-        net = income_sum - expense_sum
-        ws.cell(row=total_row + 2, column=3, value="Sof:").font = Font(bold=True)
-        net_cell = ws.cell(row=total_row + 2, column=5, value=net)
-        net_cell.font = Font(bold=True,
-                              color="006100" if net >= 0 else "9C0006")
+    # Yozuvlar — har qatorda tirik Qoldiq formulasi
+    start = open_row + 1
+    for idx, e in enumerate(entries):
+        i = start + idx
+        ws.cell(row=i, column=1, value=_sana(e))
+        ws.cell(row=i, column=2, value=_vaqt(e))
+        ws.cell(row=i, column=3, value=_cat(e["category"]))
+        ws.cell(row=i, column=4, value=e["note"] or "")
+        if e["entry_type"] == "expense":
+            ac = ws.cell(row=i, column=5, value=e["amount"])
+            ac.number_format = '#,##0'
+            ac.font = Font(color="8B0000")
+        else:
+            ac = ws.cell(row=i, column=6, value=e["amount"])
+            ac.number_format = '#,##0'
+            ac.font = Font(color="006400")
+        qc = ws.cell(row=i, column=7, value=f"=G{i - 1}+F{i}-E{i}")
+        qc.number_format = '#,##0'
+        qc.font = Font(bold=True)
+        for c in range(1, 8):
+            ws.cell(row=i, column=c).border = border
+
+    # JAMI qatori
+    last = start + len(entries) - 1
+    trow = last + 1
+    ws.cell(row=trow, column=4, value="JAMI").font = Font(bold=True)
+    te = ws.cell(row=trow, column=5, value=f"=SUM(E{start}:E{last})")
+    te.number_format = '#,##0'
+    te.font = Font(bold=True, color="8B0000")
+    ti = ws.cell(row=trow, column=6, value=f"=SUM(F{start}:F{last})")
+    ti.number_format = '#,##0'
+    ti.font = Font(bold=True, color="006400")
+    tq = ws.cell(row=trow, column=7, value=f"=G{open_row}+F{trow}-E{trow}")
+    tq.number_format = '#,##0'
+    tq.font = Font(bold=True)
+    for c in range(1, 8):
+        ws.cell(row=trow, column=c).border = border
+        ws.cell(row=trow, column=c).fill = open_fill
+
+    for col, w in zip("ABCDEFG", [12, 8, 28, 36, 15, 15, 16]):
+        ws.column_dimensions[col].width = w
+
+    # Sheet 2: Xulosa (turkumlar bo'yicha)
+    ws2 = wb.create_sheet("Xulosa")
+    for col, h in enumerate(["Tur", "Turkum", "Yozuvlar", "Jami (so'm)"], 1):
+        c = ws2.cell(row=1, column=col, value=h)
+        c.fill = header_fill
+        c.font = Font(bold=True, color="FFFFFF")
+        c.border = border
+
+    agg = {}
+    inc_total = exp_total = 0
+    for e in entries:
+        k = (e["entry_type"], e["category"])
+        a = agg.setdefault(k, [0, 0])
+        a[0] += 1
+        a[1] += e["amount"]
+        if e["entry_type"] == "income":
+            inc_total += e["amount"]
+        else:
+            exp_total += e["amount"]
+
+    row = 2
+    for tp in ("income", "expense"):
+        type_label = "Kirim" if tp == "income" else "Chiqim"
+        for (t, cat), (cnt, total) in agg.items():
+            if t != tp:
+                continue
+            ws2.cell(row=row, column=1, value=type_label)
+            ws2.cell(row=row, column=2, value=_cat(cat))
+            ws2.cell(row=row, column=3, value=cnt)
+            ac = ws2.cell(row=row, column=4, value=total)
+            ac.number_format = '#,##0'
+            ac.font = Font(color="006400" if tp == "income" else "8B0000")
+            for c in range(1, 5):
+                ws2.cell(row=row, column=c).border = border
+            row += 1
+
+    row += 1
+    inc_row = row
+    ws2.cell(row=row, column=1, value="Jami kirim").font = Font(bold=True)
+    c = ws2.cell(row=row, column=4, value=inc_total)
+    c.number_format = '#,##0'; c.font = Font(bold=True, color="006400")
+    row += 1
+    exp_row = row
+    ws2.cell(row=row, column=1, value="Jami chiqim").font = Font(bold=True)
+    c = ws2.cell(row=row, column=4, value=exp_total)
+    c.number_format = '#,##0'; c.font = Font(bold=True, color="8B0000")
+    row += 1
+    net = inc_total - exp_total
+    ws2.cell(row=row, column=1, value="Sof natija").font = Font(bold=True, size=12)
+    c = ws2.cell(row=row, column=4, value=f"=D{inc_row}-D{exp_row}")
+    c.number_format = '#,##0'
+    c.font = Font(bold=True, color="006400" if net >= 0 else "8B0000")
+
+    for col, w in zip("ABCD", [22, 26, 12, 18]):
+        ws2.column_dimensions[col].width = w
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    filename = f"shaxsiy_moliya_{now.year}_{now.month:02d}.xlsx"
-    await message.answer_document(
-        BufferedInputFile(buf.read(), filename=filename),
-        caption=f"📥 Shaxsiy moliya — {month_name} {now.year}"
-    )
+    return buf.read()
 
 
 # ─── Yozuvni o'chirish ──────────────────────────────────────────────────────
+
+def _pf_day_list(entries) -> str:
+    """Bir kundagi yozuvlar — to'liq tafsilotli matn (vaqt, kategoriya, summa, izoh)."""
+    lines = []
+    for i, e in enumerate(entries, 1):
+        emoji, name = texts.PF_ALL_CATS.get(e["category"], ("📋", e["category"]))
+        sign = "➕" if e["entry_type"] == "income" else "➖"
+        try:
+            t = fmt_local(e["created_at"], "%H:%M")
+        except Exception:
+            t = ""
+        note = f" — {_esc(e['note'])}" if e["note"] else ""
+        lines.append(
+            f"{i}. {sign} <b>{e['amount']:,}</b> · {emoji}{name}"
+            + (f" · {t}" if t else "") + note
+        )
+    return "\n".join(lines)
+
 
 @router.message(F.text == texts.BTN_PF_DELETE)
 async def pf_delete_start(message: Message, state: FSMContext):
@@ -331,20 +449,45 @@ async def pf_delete_start(message: Message, state: FSMContext):
         await message.answer(texts.NO_PERMISSION)
         return
     await state.clear()
+    await state.update_data(pf_emp_id=me["id"])
+    await message.answer(texts.PF_DELETE_ASK_DATE, reply_markup=kb.pf_date_kb())
+    await state.set_state(PersonalFinance.deleting_date)
 
-    now = tz_now()
-    entries = pf_get_monthly(me["id"], now.year, now.month)
-    if not entries:
-        await message.answer(texts.PF_DELETE_EMPTY)
+
+@router.message(PersonalFinance.deleting_date, F.text)
+async def pf_delete_date(message: Message, state: FSMContext):
+    if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
+        await state.clear()
+        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
         return
 
-    month_name = texts.MONTHS_UZ[now.month]
+    raw = message.text.strip()
+    if raw == texts.BTN_PF_TODAY:
+        d = tz_now().date()
+    else:
+        d = _parse_date(raw)
+        if not d:
+            await message.answer(texts.PF_DATE_INVALID, reply_markup=kb.pf_date_kb())
+            return
+
+    data = await state.get_data()
+    emp_id = data.get("pf_emp_id")
+    date_str = d.strftime("%Y-%m-%d")
+    label = d.strftime("%d.%m.%Y")
+    entries = pf_get_by_date(emp_id, date_str)
+    if not entries:
+        await message.answer(texts.PF_DELETE_DAY_EMPTY.format(date=label),
+                             reply_markup=kb.pf_date_kb())
+        return
+
+    await state.update_data(pf_del_date=date_str)
+    await state.set_state(PersonalFinance.deleting)
     await message.answer(
-        texts.PF_DELETE_PICK.format(month=month_name),
+        texts.PF_DELETE_PICK_DAY.format(date=label, list=_pf_day_list(entries)),
         reply_markup=kb.pf_entries_kb(entries)
     )
-    await state.update_data(pf_emp_id=me["id"])
-    await state.set_state(PersonalFinance.deleting)
+    await message.answer("👇 Yuqoridan tanlang yoki Bekor qiling.",
+                         reply_markup=kb.pf_menu_kb())
 
 
 @router.callback_query(PersonalFinance.deleting, F.data.startswith("pf_del:"))
@@ -364,12 +507,26 @@ async def pf_delete_confirm(call: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
     emp_id = data.get("pf_emp_id")
+    date_str = data.get("pf_del_date")
     row = pf_get_entry(entry_id, emp_id)
     if not row:
         await call.answer("Topilmadi yoki ruxsat yo'q.", show_alert=True)
         return
 
     pf_delete_entry(entry_id, emp_id)
-    await state.clear()
-    await call.message.edit_text(texts.PF_DELETED)
-    await call.answer()
+    await call.answer("✅ O'chirildi")
+
+    # Shu kunda qolgan yozuvlarni qayta ko'rsatamiz — ketma-ket o'chirish uchun
+    remaining = pf_get_by_date(emp_id, date_str) if date_str else []
+    if remaining:
+        try:
+            label = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except (ValueError, TypeError):
+            label = str(date_str)
+        await call.message.edit_text(
+            texts.PF_DELETE_PICK_DAY.format(date=label, list=_pf_day_list(remaining)),
+            reply_markup=kb.pf_entries_kb(remaining)
+        )
+    else:
+        await state.clear()
+        await call.message.edit_text(texts.PF_DELETED)

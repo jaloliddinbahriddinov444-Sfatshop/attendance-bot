@@ -183,20 +183,6 @@ def init_db():
             FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         );
-
-        CREATE TABLE IF NOT EXISTS custom_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner_id INTEGER NOT NULL,
-            scope TEXT NOT NULL CHECK(scope IN ('fin','fin_personal','pf')),
-            entry_type TEXT NOT NULL CHECK(entry_type IN ('income','expense')),
-            emoji TEXT DEFAULT '🏷',
-            name TEXT NOT NULL,
-            is_active INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT (datetime('now')),
-            FOREIGN KEY (owner_id) REFERENCES employees(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_custom_cats_owner
-            ON custom_categories(owner_id, scope, entry_type);
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -241,6 +227,12 @@ def init_db():
 
     # Lavozimlar tizimini yaratish
     init_positions()
+
+    # Moliya turkumlari tizimini yaratish
+    init_finance_categories()
+
+    # Referens qurilmalar (beacon) tizimini yaratish
+    init_beacon_devices()
 
     # Boshlang'ich sozlamalar
     defaults = {
@@ -344,6 +336,145 @@ def office_ip_exists(ip: str) -> bool:
             "SELECT 1 FROM office_ips WHERE ip = ?", ((ip or "").strip(),)
         ).fetchone()
         return row is not None
+
+
+# ===== Ofis beacon (referens qurilma) =====
+# Ofis WiFi'sidagi doim yoqilgan qurilma vaqti-vaqti bilan /beacon URL'ini ochib
+# turadi. Server o'sha paytdagi public IP'ni "ofisning joriy IP'si" sifatida yozadi.
+# Provayder IP'ni o'zgartirsa — qurilma keyingi signalda avtomatik yangilab qo'yadi.
+
+def set_office_beacon(ip: str, net: str, at: float):
+    """Referens qurilma bergan joriy ofis IP'sini (va /24 diapazonini) saqlash."""
+    set_setting("beacon_ip", (ip or "").strip())
+    set_setting("beacon_net", (net or "").strip())
+    set_setting("beacon_at", str(int(at)))
+
+
+def get_office_beacon() -> dict:
+    """Oxirgi beacon holati: {ip, net, at (unix sekund)}."""
+    at = get_setting("beacon_at", "")
+    return {
+        "ip": get_setting("beacon_ip", "") or "",
+        "net": get_setting("beacon_net", "") or "",
+        "at": int(at) if at and str(at).isdigit() else 0,
+    }
+
+
+def get_beacon_secret() -> str:
+    """Referens qurilma URL'idagi maxfiy token (sozlanmagan bo'lsa bo'sh satr)."""
+    return get_setting("beacon_secret", "") or ""
+
+
+def set_beacon_secret(secret: str):
+    set_setting("beacon_secret", secret)
+
+
+# ===== Referens qurilmalar (bir nechta beacon qurilma) =====
+
+def init_beacon_devices():
+    """`beacon_devices` jadvalini yaratish + eski bitta-secret beacon'ni ko'chirish."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS beacon_devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL DEFAULT '',
+                secret TEXT NOT NULL UNIQUE,
+                last_ip TEXT DEFAULT '',
+                last_net TEXT DEFAULT '',
+                last_at INTEGER DEFAULT 0,
+                is_primary INTEGER DEFAULT 0,
+                added_by INTEGER,
+                added_at TIMESTAMP DEFAULT (datetime('now'))
+            )
+        """)
+        # Migratsiya: eski `settings.beacon_secret` bo'lsa — uni qurilma sifatida ko'chiramiz
+        legacy = conn.execute(
+            "SELECT value FROM settings WHERE key='beacon_secret'"
+        ).fetchone()
+        if legacy and legacy["value"]:
+            sec = legacy["value"]
+            exists = conn.execute(
+                "SELECT 1 FROM beacon_devices WHERE secret=?", (sec,)
+            ).fetchone()
+            if not exists:
+                def _s(k):
+                    r = conn.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone()
+                    return r["value"] if r else ""
+                ip, net, at = _s("beacon_ip"), _s("beacon_net"), _s("beacon_at")
+                at = int(at) if at and str(at).isdigit() else 0
+                conn.execute(
+                    "INSERT INTO beacon_devices "
+                    "(label, secret, last_ip, last_net, last_at, is_primary) "
+                    "VALUES (?, ?, ?, ?, ?, 1)",
+                    ("💻 Mac", sec, ip, net, at),
+                )
+
+
+def add_beacon_device(label: str, secret: str, added_by: int = None,
+                      is_primary: bool = False) -> int:
+    with get_db() as conn:
+        if is_primary:
+            conn.execute("UPDATE beacon_devices SET is_primary=0")
+        cur = conn.execute(
+            "INSERT INTO beacon_devices (label, secret, is_primary, added_by) "
+            "VALUES (?, ?, ?, ?)",
+            (label, secret, 1 if is_primary else 0, added_by),
+        )
+        return cur.lastrowid
+
+
+def get_beacon_devices() -> list:
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM beacon_devices ORDER BY is_primary DESC, added_at"
+        ).fetchall()
+
+
+def get_beacon_device(dev_id: int):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM beacon_devices WHERE id=?", (dev_id,)
+        ).fetchone()
+
+
+def get_beacon_device_by_secret(secret: str):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM beacon_devices WHERE secret=?", ((secret or "").strip(),)
+        ).fetchone()
+
+
+def update_beacon_device_ping(secret: str, ip: str, net: str, at: float):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE beacon_devices SET last_ip=?, last_net=?, last_at=? WHERE secret=?",
+            ((ip or "").strip(), (net or "").strip(), int(at), (secret or "").strip()),
+        )
+
+
+def remove_beacon_device(dev_id: int) -> int:
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM beacon_devices WHERE id=?", (dev_id,))
+        return cur.rowcount
+
+
+def set_primary_beacon_device(dev_id: int):
+    with get_db() as conn:
+        conn.execute("UPDATE beacon_devices SET is_primary=0")
+        conn.execute("UPDATE beacon_devices SET is_primary=1 WHERE id=?", (dev_id,))
+
+
+def get_active_beacon_nets(valid_sec: int) -> list:
+    """Oxirgi `valid_sec` sekund ichida signal bergan qurilmalar diapazonlari."""
+    import time as _t
+    cutoff = int(_t.time()) - int(valid_sec)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT last_net FROM beacon_devices "
+            "WHERE last_net != '' AND last_at >= ?",
+            (cutoff,),
+        ).fetchall()
+        return [r["last_net"] for r in rows]
 
 
 # ===== Xodimlar =====
@@ -578,7 +709,7 @@ def get_today_attendance(employee_id: int):
         return conn.execute(
             "SELECT * FROM attendance WHERE employee_id = ? "
             "AND date(timestamp, '+5 hours') = date('now', '+5 hours') "
-            "ORDER BY timestamp",
+            "ORDER BY datetime(timestamp)",
             (employee_id,)
         ).fetchall()
 
@@ -667,7 +798,7 @@ def get_day_attendance(employee_id: int, date_local: str):
             "SELECT id, check_type, timestamp FROM attendance "
             "WHERE employee_id = ? "
             "AND date(timestamp, '+5 hours') = ? "
-            "ORDER BY timestamp ASC",
+            "ORDER BY datetime(timestamp) ASC",
             (employee_id, date_local)
         ).fetchall()
 
@@ -703,7 +834,7 @@ def add_manual_attendance(employee_id: int, check_type: str, time_str: str,
             "INSERT INTO attendance (employee_id, check_type, timestamp, "
             "wifi_name, wifi_match, face_match_score) "
             "VALUES (?, ?, ?, ?, 1, 1.0)",
-            (employee_id, check_type, ts.isoformat(), "Admin qo'shdi")
+            (employee_id, check_type, ts.isoformat(sep=' '), "Admin qo'shdi")
         )
 
 
@@ -855,6 +986,16 @@ def reopen_month(year: int, month: int):
         )
 
 
+def get_closed_months(limit: int = 10):
+    """Oxirgi yopilgan oylar (eng yangisi birinchi). Arxiv uchun."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT year, month, closed_at FROM closed_months "
+            "ORDER BY year DESC, month DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+
+
 # ===== Audit =====
 
 def get_audit_entries(year: int, month: int, limit: int = 30):
@@ -880,14 +1021,31 @@ def get_audit_entries(year: int, month: int, limit: int = 30):
 
 
 def get_all_employees_salary_summary(year: int, month: int):
-    """Bu oy uchun barcha xodimlarning xulosasi (Excel uchun)"""
-    employees = get_all_employees(active_only=True)
+    """Bu oy uchun barcha xodimlarning xulosasi (Excel uchun).
+
+    O'chirilgan (faolsiz) xodimlar ham — agar shu oyda faoliyati (ishlangan vaqt
+    yoki ish haqqi yozuvi) bo'lsa — kiritiladi. Shunday qilib xodim o'chirilgandan
+    keyin ham o'sha oygi ma'lumotlari hisobotda saqlanib qoladi.
+    Asosiy ish haqqi kunbay (lavozim/kunlik stavka) bo'yicha hisoblanadi.
+    """
+    employees = get_all_employees(active_only=False)
     result = []
     for emp in employees:
-        rate = emp["hourly_rate"] if "hourly_rate" in emp.keys() and emp["hourly_rate"] else 0
         minutes = get_monthly_worked_minutes(emp["id"], year, month)
-        base = int((minutes / 60.0) * rate) if rate else 0
         totals = get_salary_totals_by_type(emp["id"], year, month)
+        base = get_monthly_base_salary(emp["id"], year, month)
+
+        # Faolsiz (o'chirilgan) xodim faqat shu oyda faoliyati bo'lsa ko'rsatiladi
+        has_activity = bool(minutes) or bool(base) or any(totals.values())
+        is_active = bool(emp["is_active"]) if "is_active" in emp.keys() else True
+        if not is_active and not has_activity:
+            continue
+
+        # Ko'rsatiladigan stavka: kunlik stavka (bo'lmasa — eski soatbay)
+        daily = emp["daily_rate"] if "daily_rate" in emp.keys() and emp["daily_rate"] else 0
+        hourly = emp["hourly_rate"] if "hourly_rate" in emp.keys() and emp["hourly_rate"] else 0
+        rate = daily if daily else hourly
+
         total = (base - totals["avans"] - totals["jarima"]
                  + totals["mukofot"] + totals["bonus"] - totals["mahsulot"])
         result.append({
@@ -1170,88 +1328,191 @@ def get_monthly_finance_summary(owner_id: int, year: int, month: int):
     }
 
 
-def get_today_finance_summary(owner_id: int, date_str: str) -> dict:
-    """Bugungi kun xulosasi (Toshkent vaqti, 'YYYY-MM-DD')."""
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT entry_type, category, SUM(amount) AS total, COUNT(*) AS cnt
-            FROM finance_entries
-            WHERE owner_id = ?
-              AND date(entry_date, '+5 hours') = ?
-            GROUP BY entry_type, category
-            ORDER BY entry_type, total DESC
-            """,
-            (owner_id, date_str)
-        ).fetchall()
-    income_total = 0
-    expense_total = 0
-    expense_cnt = 0
-    cnt = 0
-    by_cat = {"income": [], "expense": []}
-    for r in rows:
-        cnt += r["cnt"]
-        if r["entry_type"] == "income":
-            income_total += r["total"]
-        else:
-            expense_total += r["total"]
-            expense_cnt += r["cnt"]
-        by_cat[r["entry_type"]].append(dict(r))
-    return {
-        "income_total": income_total,
-        "expense_total": expense_total,
-        "expense_cnt": expense_cnt,
-        "cnt": cnt,
-        "by_category": by_cat,
-    }
+# ===== Moliya turkumlari (kategoriya) tizimi =====
+
+# Seed: (entry_type, ckey, emoji, name, protected, is_personal)
+_FINANCE_CATEGORY_SEED = [
+    # Chiqim (expense)
+    ("expense", "food",      "🍽", "Ovqat",                 0, 0),
+    ("expense", "transport", "🚌", "Yo'lkira",              0, 0),
+    ("expense", "supply",    "📦", "Ta'minot",              0, 0),
+    ("expense", "expense",   "💸", "Xarajat",               0, 0),
+    ("expense", "advance",   "👤", "Hodimlar uchun Avans",  1, 0),
+    ("expense", "salary",    "💼", "Ish haqqi",             0, 0),
+    ("expense", "personal",  "🛍", "Shaxsiy xarajatlarim",  1, 0),
+    ("expense", "other",     "📝", "Boshqa",                0, 0),
+    # Shaxsiy ichki turkumlar (expense, is_personal=1, himoyalangan)
+    ("expense", "p_transport", "🚌", "Shaxsiy: Yo'lkira",   1, 1),
+    ("expense", "p_food",      "🍽", "Shaxsiy: Ovqat",      1, 1),
+    ("expense", "p_rent",      "🏠", "Shaxsiy: Ijara",      1, 1),
+    ("expense", "p_saving",    "💰", "Shaxsiy: Jamg'arma",  1, 1),
+    ("expense", "p_debt",      "💳", "Shaxsiy: Qarz",       1, 1),
+    ("expense", "p_other",     "📝", "Shaxsiy: Boshqa",     1, 1),
+    # Kirim (income)
+    ("income", "podachot", "📊", "Podachot",         0, 0),
+    ("income", "sales",    "💵", "Sotuvdan tushum",  0, 0),
+    ("income", "other",    "📝", "Boshqa",           0, 0),
+]
 
 
-# ===== Maxsus turkumlar (custom categories) =====
+_FINCAT_CREATE_SQL = """
+    CREATE TABLE finance_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        entry_type TEXT NOT NULL,
+        ckey TEXT NOT NULL,
+        emoji TEXT DEFAULT '🏷',
+        name TEXT NOT NULL,
+        protected INTEGER DEFAULT 0,
+        is_personal INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT (datetime('now')),
+        UNIQUE(owner_id, entry_type, ckey)
+    )
+"""
 
-def add_custom_category(owner_id: int, scope: str, entry_type: str,
-                        emoji: str, name: str) -> int:
-    """Yangi maxsus turkum qo'shish. Yozuvlarda kaliti 'c{id}' bo'ladi."""
-    with get_db() as conn:
-        cur = conn.execute(
-            "INSERT INTO custom_categories (owner_id, scope, entry_type, emoji, name) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (owner_id, scope, entry_type, emoji, name)
+
+def _seed_owner_categories(conn, owner_id: int):
+    for entry_type, ckey, emoji, name, protected, is_personal in _FINANCE_CATEGORY_SEED:
+        conn.execute(
+            "INSERT OR IGNORE INTO finance_categories "
+            "(owner_id, entry_type, ckey, emoji, name, protected, is_personal) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (owner_id, entry_type, ckey, emoji, name, protected, is_personal)
         )
-        return cur.lastrowid
 
 
-def get_custom_categories(owner_id: int, scope: str, entry_type: str = None):
-    """Egasi va scope bo'yicha aktiv maxsus turkumlar."""
+def _finance_owner_ids(conn):
+    return [r["id"] for r in conn.execute(
+        "SELECT id FROM employees WHERE role IN ('boss','bosh_admin') AND is_active = 1"
+    ).fetchall()]
+
+
+def _migrate_fincat_per_owner(conn):
+    """Eski global finance_categories -> owner_id li sxema.
+
+    Eski (global) turkumlar bosh_admin'ga ko'chiriladi (custom'lar saqlanadi);
+    bosslarga default to'plam keyin seed qilinadi.
+    """
+    old = conn.execute("SELECT * FROM finance_categories").fetchall()
+    ba = conn.execute(
+        "SELECT id FROM employees WHERE role='bosh_admin' AND is_active=1 ORDER BY id LIMIT 1"
+    ).fetchone()
+    ba_id = ba["id"] if ba else None
+    conn.execute("ALTER TABLE finance_categories RENAME TO finance_categories_old")
+    conn.execute(_FINCAT_CREATE_SQL)
+    if ba_id:
+        for r in old:
+            conn.execute(
+                "INSERT OR IGNORE INTO finance_categories "
+                "(owner_id, entry_type, ckey, emoji, name, protected, is_personal, is_active) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (ba_id, r["entry_type"], r["ckey"], r["emoji"], r["name"],
+                 r["protected"], r["is_personal"], r["is_active"])
+            )
+    conn.execute("DROP TABLE finance_categories_old")
+
+
+def init_finance_categories():
+    """finance_categories (owner_id li) — yaratish, migratsiya, har egaga default seed."""
     with get_db() as conn:
-        if entry_type:
-            return conn.execute(
-                "SELECT * FROM custom_categories "
-                "WHERE owner_id = ? AND scope = ? AND entry_type = ? AND is_active = 1 "
-                "ORDER BY id",
-                (owner_id, scope, entry_type)
-            ).fetchall()
-        return conn.execute(
-            "SELECT * FROM custom_categories "
-            "WHERE owner_id = ? AND scope = ? AND is_active = 1 "
-            "ORDER BY id",
-            (owner_id, scope)
-        ).fetchall()
+        exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='finance_categories'"
+        ).fetchone()
+        if exists:
+            cols = [r[1] for r in conn.execute(
+                "PRAGMA table_info(finance_categories)").fetchall()]
+            if "owner_id" not in cols:
+                _migrate_fincat_per_owner(conn)
+        else:
+            conn.execute(_FINCAT_CREATE_SQL)
+        # Har bir moliya egasiga default turkumlar (idempotent)
+        for oid in _finance_owner_ids(conn):
+            _seed_owner_categories(conn, oid)
 
 
-def get_custom_category_by_id(cat_id: int):
-    """Turkumni ID bo'yicha olish (is_active'dan qat'i nazar — eski yozuvlar uchun)."""
+def ensure_owner_categories(owner_id: int):
+    """Egada birorta turkum bo'lmasa — default to'plamni yaratadi (yangi boss uchun)."""
+    with get_db() as conn:
+        cnt = conn.execute(
+            "SELECT COUNT(*) AS c FROM finance_categories WHERE owner_id = ?", (owner_id,)
+        ).fetchone()["c"]
+        if cnt == 0:
+            _seed_owner_categories(conn, owner_id)
+
+
+def get_finance_categories(entry_type: str, owner_id: int, active_only: bool = True):
+    """Tanlov klaviaturasi uchun — egaga tegishli asosiy turkumlar."""
+    q = ("SELECT * FROM finance_categories "
+         "WHERE owner_id = ? AND entry_type = ? AND is_personal = 0")
+    if active_only:
+        q += " AND is_active = 1"
+    q += " ORDER BY id"
+    with get_db() as conn:
+        return conn.execute(q, (owner_id, entry_type)).fetchall()
+
+
+def get_finance_personal_categories(owner_id: int, active_only: bool = True):
+    """Egaga tegishli shaxsiy xarajatlar ichki turkumlari."""
+    q = "SELECT * FROM finance_categories WHERE owner_id = ? AND is_personal = 1"
+    if active_only:
+        q += " AND is_active = 1"
+    q += " ORDER BY id"
+    with get_db() as conn:
+        return conn.execute(q, (owner_id,)).fetchall()
+
+
+def get_all_finance_categories(owner_id: int, active_only: bool = True):
+    """Boshqaruv menyusi uchun — egaga tegishli barcha turkumlar."""
+    q = "SELECT * FROM finance_categories WHERE owner_id = ?"
+    if active_only:
+        q += " AND is_active = 1"
+    q += " ORDER BY entry_type, id"
+    with get_db() as conn:
+        return conn.execute(q, (owner_id,)).fetchall()
+
+
+def get_finance_category(cat_id: int):
     with get_db() as conn:
         return conn.execute(
-            "SELECT * FROM custom_categories WHERE id = ?", (cat_id,)
+            "SELECT * FROM finance_categories WHERE id = ?", (cat_id,)
         ).fetchone()
 
 
-def deactivate_custom_category(cat_id: int, owner_id: int) -> bool:
-    """Soft delete: is_active=0 (tarix buzilmasligi uchun DELETE emas)."""
+def finance_category_label(ckey: str):
+    """Turkum kaliti bo'yicha (emoji, nom). O'chirilgan (faolsiz) turkumlar ham
+    topiladi, shunda eski yozuvlar nomini yo'qotmaydi. Topilmasa — None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT emoji, name FROM finance_categories WHERE ckey = ? "
+            "ORDER BY is_active DESC LIMIT 1",
+            (ckey,)
+        ).fetchone()
+    return (row["emoji"], row["name"]) if row else None
+
+
+def create_finance_category(entry_type: str, emoji: str, name: str, owner_id: int) -> int:
+    """Egaga yangi turkum qo'shish. Barqaror ckey = 'c{id}' beriladi."""
     with get_db() as conn:
         cur = conn.execute(
-            "UPDATE custom_categories SET is_active = 0 "
-            "WHERE id = ? AND owner_id = ?",
+            "INSERT INTO finance_categories (owner_id, entry_type, ckey, emoji, name) "
+            "VALUES (?, ?, '', ?, ?)",
+            (owner_id, entry_type, emoji, name)
+        )
+        cid = cur.lastrowid
+        conn.execute(
+            "UPDATE finance_categories SET ckey = ? WHERE id = ?",
+            (f"c{cid}", cid)
+        )
+        return cid
+
+
+def delete_finance_category(cat_id: int, owner_id: int) -> bool:
+    """Yumshoq o'chirish (is_active=0). Faqat egasining himoyalanmagan turkumi. Tarix saqlanadi."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE finance_categories SET is_active = 0 "
+            "WHERE id = ? AND owner_id = ? AND protected = 0 AND is_active = 1",
             (cat_id, owner_id)
         )
         return cur.rowcount > 0
@@ -1497,23 +1758,6 @@ def pf_get_summary(employee_id: int, year: int, month: int) -> dict:
     }
 
 
-def pf_get_today_totals(employee_id: int, date_str: str) -> dict:
-    """Bugungi kirim/chiqim jami (entry_date lokal 'YYYY-MM-DD' string)."""
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT entry_type, SUM(amount) AS total, COUNT(*) AS cnt "
-            "FROM personal_finance "
-            "WHERE employee_id = ? AND entry_date = ? "
-            "GROUP BY entry_type",
-            (employee_id, date_str)
-        ).fetchall()
-    result = {"income": 0, "expense": 0, "cnt": 0}
-    for r in rows:
-        result[r["entry_type"]] = r["total"]
-        result["cnt"] += r["cnt"]
-    return result
-
-
 def pf_get_entry(entry_id: int, employee_id: int):
     with get_db() as conn:
         return conn.execute(
@@ -1528,3 +1772,30 @@ def pf_delete_entry(entry_id: int, employee_id: int):
             "DELETE FROM personal_finance WHERE id = ? AND employee_id = ?",
             (entry_id, employee_id)
         )
+
+
+def pf_balance_before(employee_id: int, year: int, month: int) -> int:
+    """Berilgan oy boshigacha yig'ilgan shaxsiy qoldiq (kirim − chiqim).
+
+    personal_finance.entry_date 'YYYY-MM-DD' satr sifatida saqlanadi — ISO format
+    bo'lgani uchun matn taqqoslash to'g'ri ishlaydi.
+    """
+    first = f"{year:04d}-{month:02d}-01"
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(CASE WHEN entry_type='income' THEN amount "
+            "ELSE -amount END), 0) AS b "
+            "FROM personal_finance WHERE employee_id = ? AND entry_date < ?",
+            (employee_id, first)
+        ).fetchone()
+        return row["b"] or 0
+
+
+def pf_get_by_date(employee_id: int, date_str: str):
+    """Berilgan kun ('YYYY-MM-DD') bo'yicha shaxsiy yozuvlar (eskisidan yangisiga)."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM personal_finance "
+            "WHERE employee_id = ? AND entry_date = ? ORDER BY id",
+            (employee_id, date_str)
+        ).fetchall()
