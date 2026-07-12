@@ -121,7 +121,64 @@ alohida .md fayl qilib) yoziladi:
 
 <!-- Yangi yozuvlarni shu yerdan boshlab qo'shing -->
 
-### 2026-07-12 — 3 yangi funksiya qo'shildi (dinamik turkumlar, "Bugun" bloklari)
+### 2026-07-12 (2) — MUHIM: server kodi lokaldan yangi edi!
+
+Deploy oldidan aniqlandi: boshqa chatdan serverga (6-iyul) katta o'zgarishlar
+deploy qilingan, lokal nusxa 29-iyunda qolib ketgan edi. Server kodi lokalga
+sinxronlandi (git commit 8716c89). **Qoida: har ishdan oldin server bilan
+solishtirish kerak** (`ssh root@45.138.158.174`, kod `/opt/davomat/`).
+
+Serverda allaqachon bor bo'lgan (boshqa chatdan): `finance_categories`
+jadvali (Moliya turkumlari TO'LIQ bazada, owner_id + protected + is_personal,
+ckey='c{id}'), `handlers/fin_categories.py` ("🏷 Moliya turkumlari" tugmasi),
+`finance_category_label()` resolveri, beacon tizimi, PF o'chirish sana bo'yicha,
+PF Excel yangi format.
+
+**Deploy ma'lumotlari:**
+- Servis: `systemctl restart davomat`, holat: `systemctl is-active davomat`
+- Kod: `/opt/davomat/`, baza: `/opt/davomat/attendance.db`
+- Log: `/var/log/davomat.log` (journald'da faqat systemd qatorlari)
+- Zaxiralar: `/opt/davomat/backups/pre-deploy-*.tgz` (deploy oldidan olinadi)
+- Deploy usuli: `tar czf - fayllar | ssh root@... "cd /opt/davomat && tar xzf -"`
+  keyin serverda py_compile va restart. Serverda git YO'Q.
+
+### 2026-07-12 — 3 yangi funksiya qo'shildi va DEPLOY QILINDI
+
+Eslatma: quyidagi 1-bandning dastlabki (custom_categories/catutil) versiyasi
+bekor qilindi — server dizayni bilan to'qnashdi. Yakuniy versiya server
+uslubida yozildi (arxiv: `arxiv-lokal-turkumlar` git branchi).
+
+**1. PF (Shaxsiy moliya) turkumlari — bazaga ko'chirildi:**
+- Yangi jadval `pf_categories` — `finance_categories` bilan bir xil naqsh:
+  owner_id, entry_type, ckey, emoji, name, protected, is_active,
+  UNIQUE(owner_id, entry_type, ckey). Har egaga 13 ta default seed
+  (PF_EXPENSE_CATS + PF_INCOME_CATS asosida), custom ckey='c{id}', soft delete.
+- database.py: `init_pf_categories` (init_db ichida), `ensure_owner_pf_categories`,
+  `get_pf_categories`, `get_all_pf_categories`, `get_pf_category`,
+  `get_pf_category_by_ckey`, `pf_category_label`, `create_pf_category`,
+  `delete_pf_category`.
+- Yangi handler `handlers/pf_categories.py` — "🏷 Shaxsiy turkumlar" tugmasi
+  (PF menyusida), fin_categories.py bilan bir xil oqim: tur → emoji → nom.
+  Callback prefiksi `pfcat_*`, FSM `PFCategoryManage`.
+- PF klaviaturalari (`pf_income_cats_kb(owner_id)`, `pf_expense_cats_kb(owner_id)`)
+  endi bazadan o'qiydi; `pf_cat_chosen` bazadan tekshiradi.
+- Bonus fix: `pf_cat:cancel` (Bekor tugmasi) ilgari ishlamasdi — tuzatildi.
+
+**2. Moliya "Bu oylik xulosa"ga bugungi blok:**
+- `get_today_finance_summary(owner_id, date_str)` — `date(entry_date,'+5 hours')`.
+- Balansdan oldin: "📅 Bugun (KK.OO): −X so'm (N ta yozuv)" + turkum qatorlari
+  + "➕ Bugungi kirim". Yozuv bo'lmasa "📅 Bugun hali yozuv yo'q."
+
+**3. PF "Bu oy hisoboti"ga bugungi blok + kunlik byudjet:**
+- `pf_get_today_totals(employee_id, date_str)` — entry_date lokal string tenglik.
+- Sof qoldiqdan keyin: Bugun / Qoldiq / Oy oxirigacha N kun /
+  Kunlik limit (`net // max(days_in_month - today.day, 1)`);
+  net ≤ 0 bo'lsa 🔻 limit hisoblanmaydi.
+
+Deploy: 2026-07-12 14:28, zaxira `backups/pre-deploy-20260712-142651.tgz`,
+bot toza ishga tushdi, pf_categories 3 egaga seed bo'ldi (13 tadan).
+
+### (BEKOR QILINGAN) 2026-07-12 — dastlabki custom_categories versiyasi
 
 **1. Dinamik (custom) turkumlar tizimi:**
 - Yangi jadval `custom_categories` (owner_id, scope: fin|fin_personal|pf,
