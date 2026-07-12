@@ -930,6 +930,23 @@ def get_dashboard_month(year: int, month: int):
         ).fetchall()
 
 
+def get_employees_admin():
+    """Web panel uchun to'liq hodimlar ro'yxati (faol+nofaol, lavozim bilan)."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT e.id, e.telegram_id, e.full_name, e.phone, e.position,
+                   e.role, e.is_active, e.hourly_rate, e.daily_rate,
+                   e.card_number, e.card_holder_name,
+                   datetime(e.registered_at, '+5 hours') as registered_at,
+                   e.position_id, p.name as position_name, p.work_hours
+            FROM employees e
+            LEFT JOIN positions p ON p.id = e.position_id
+            ORDER BY e.is_active DESC, e.full_name
+            """
+        ).fetchall()
+
+
 # ===== Davomat tuzatish so'rovlari =====
 
 def create_fix_request(employee_id: int, target_date: str, request_type: str,

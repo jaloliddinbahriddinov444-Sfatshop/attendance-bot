@@ -12,11 +12,18 @@ Barcha vaqtlar javobda Toshkent (UTC+5) vaqtida.
 """
 import hmac
 import logging
+import re
 
 from aiohttp import web
 
 from config import DASHBOARD_API_KEY, DASHBOARD_ALLOWED_ORIGIN
-from database import get_dashboard_today, get_dashboard_month, get_office_config
+from database import (
+    get_dashboard_today, get_dashboard_month, get_office_config,
+    get_employees_admin, get_all_positions, get_position,
+    get_employee_by_id, update_employee_profile, update_employee_card,
+    set_hourly_rate, set_employee_position, set_employee_daily_rate,
+    deactivate_employee, reactivate_employee,
+)
 from tzutil import now as tz_now
 
 logger = logging.getLogger(__name__)
@@ -177,10 +184,145 @@ async def _options_handler(request: web.Request) -> web.Response:
     resp = web.Response(status=204)
     if DASHBOARD_ALLOWED_ORIGIN:
         resp.headers["Access-Control-Allow-Origin"] = DASHBOARD_ALLOWED_ORIGIN
-        resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "X-Api-Key"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, PATCH, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "X-Api-Key, Content-Type"
         resp.headers["Vary"] = "Origin"
     return resp
+
+
+# ---------- Hodimlar ma'lumotlari (ko'rish/tahrirlash) ----------
+
+async def _api_employees(request: web.Request) -> web.Response:
+    if not _authorized(request):
+        return _forbidden_json()
+    employees = [{
+        "id": r["id"],
+        "full_name": r["full_name"],
+        "phone": r["phone"],
+        "position_text": r["position"] or "",
+        "position_id": r["position_id"],
+        "position_name": r["position_name"],
+        "work_hours": r["work_hours"],
+        "role": r["role"] or "employee",
+        "is_active": bool(r["is_active"]),
+        "hourly_rate": r["hourly_rate"] or 0,
+        "daily_rate": r["daily_rate"] or 0,
+        "card_number": r["card_number"] or "",
+        "card_holder_name": r["card_holder_name"] or "",
+        "registered_at": (r["registered_at"] or "")[:16],
+    } for r in get_employees_admin()]
+    return _cors(web.json_response({"employees": employees}))
+
+
+async def _api_positions(request: web.Request) -> web.Response:
+    if not _authorized(request):
+        return _forbidden_json()
+    positions = [{
+        "id": p["id"],
+        "name": p["name"],
+        "work_hours": p["work_hours"],
+        "min_rate": p["min_rate"],
+        "max_rate": p["max_rate"],
+    } for p in get_all_positions()]
+    return _cors(web.json_response({"positions": positions}))
+
+
+def _bad(msg: str) -> web.Response:
+    return _cors(web.json_response({"error": msg}, status=400))
+
+
+async def _api_employee_patch(request: web.Request) -> web.Response:
+    """Hodim ma'lumotini tahrirlash — botdagi bilan bir xil qoidalar.
+    Ruxsat etilgan maydonlar: full_name, position_id(+daily_rate),
+    daily_rate, hourly_rate, card_number+card_holder_name, is_active.
+    Rol va telefon bu yerdan o'zgartirilmaydi (botda ham yo'q)."""
+    if not _authorized(request):
+        return _forbidden_json()
+    try:
+        emp_id = int(request.match_info["id"])
+    except (KeyError, ValueError):
+        return _bad("noto'g'ri id")
+    emp = get_employee_by_id(emp_id)
+    if emp is None:
+        return _cors(web.json_response({"error": "hodim topilmadi"}, status=404))
+    try:
+        body = await request.json()
+    except Exception:
+        return _bad("JSON kutilgan edi")
+    if not isinstance(body, dict):
+        return _bad("JSON obyekt kutilgan edi")
+
+    changes = []
+
+    if "full_name" in body:
+        name = str(body["full_name"] or "").strip()
+        if len(name) < 5:
+            return _bad("Ism juda qisqa (kamida 5 belgi)")
+        update_employee_profile(emp_id, full_name=name)
+        changes.append("full_name")
+
+    if "position_id" in body:
+        pos_id = body["position_id"]
+        if pos_id in (None, 0, "0", ""):
+            return _bad("Lavozim tanlanishi kerak")
+        try:
+            pos_id = int(pos_id)
+        except (TypeError, ValueError):
+            return _bad("Lavozim id noto'g'ri")
+        if get_position(pos_id) is None:
+            return _bad("Bunday lavozim yo'q")
+        try:
+            daily = int(body.get("daily_rate", emp["daily_rate"] or 0))
+        except (TypeError, ValueError):
+            return _bad("Kunlik stavka noto'g'ri")
+        if daily <= 0 or daily > 10_000_000:
+            return _bad("Kunlik stavka 1 dan 10 mln gacha bo'lishi kerak")
+        set_employee_position(emp_id, pos_id, daily)
+        changes.append("position")
+    elif "daily_rate" in body:
+        try:
+            daily = int(body["daily_rate"])
+        except (TypeError, ValueError):
+            return _bad("Kunlik stavka noto'g'ri")
+        if daily <= 0 or daily > 10_000_000:
+            return _bad("Kunlik stavka 1 dan 10 mln gacha bo'lishi kerak")
+        set_employee_daily_rate(emp_id, daily)
+        changes.append("daily_rate")
+
+    if "hourly_rate" in body:
+        try:
+            rate = int(body["hourly_rate"])
+        except (TypeError, ValueError):
+            return _bad("Soatlik stavka noto'g'ri")
+        if rate < 0 or rate > 10_000_000:
+            return _bad("Soatlik stavka 0 dan 10 mln gacha bo'lishi kerak")
+        set_hourly_rate(emp_id, rate)
+        changes.append("hourly_rate")
+
+    if "card_number" in body or "card_holder_name" in body:
+        card = re.sub(r"\D", "", str(body.get("card_number", emp["card_number"] or "")))
+        holder = str(body.get("card_holder_name", emp["card_holder_name"] or "")).strip()
+        if card and len(card) != 16:
+            return _bad("Karta raqami 16 ta raqam bo'lishi kerak")
+        if card and len(holder) < 3:
+            return _bad("Karta egasining ismi juda qisqa")
+        update_employee_card(emp_id, card, holder if card else "")
+        changes.append("card")
+
+    if "is_active" in body:
+        if bool(body["is_active"]):
+            reactivate_employee(emp_id)
+        else:
+            if (emp["role"] or "") == "bosh_admin":
+                return _bad("Bosh adminni faolsizlantirib bo'lmaydi")
+            deactivate_employee(emp_id)
+        changes.append("is_active")
+
+    if not changes:
+        return _bad("O'zgartiriladigan maydon yo'q")
+
+    logger.info("Panel: hodim #%s tahrirlandi (%s)", emp_id, ", ".join(changes))
+    return _cors(web.json_response({"id": emp_id, "updated": changes}))
 
 
 async def _page_handler(request: web.Request) -> web.Response:
@@ -193,6 +335,9 @@ def setup_dashboard_routes(app: web.Application):
     app.router.add_get("/dashboard", _page_handler)
     app.router.add_get("/api/dashboard/today", _api_today)
     app.router.add_get("/api/dashboard/month", _api_month)
+    app.router.add_get("/api/dashboard/employees", _api_employees)
+    app.router.add_get("/api/dashboard/positions", _api_positions)
+    app.router.add_patch("/api/dashboard/employees/{id}", _api_employee_patch)
     app.router.add_route("OPTIONS", "/api/dashboard/{tail:.*}", _options_handler)
     logger.info("Dashboard endpointlari ulandi: /dashboard, /api/dashboard/*")
 
