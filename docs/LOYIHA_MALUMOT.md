@@ -429,3 +429,29 @@ BRAUZERDA sinaldi: rol almashtirish, 3 darajali breadcrumb, ortga qaytish,
 menyular orasida yurganda o'zgarishlar yo'qolmasligi, target'siz tugma toast'i,
 3-tugma rad, "Shu menyuni standartga", yetim menyu ochilishi — konsolda xato yo'q.
 Jonli attendance.db tegilmagan. HALI DEPLOY QILINMAGAN.
+
+### 2026-08-01 — Hisobotlarda 6 oylik arxiv navigatsiyasi (◀️ ▶️) + oy tanlab yopish
+
+Muammo: yangi oy boshlanganda barcha "Bu oy" ekranlari bo'sh Avgustni
+ko'rsatardi, Iyulni UI dan ko'rib bo'lmasdi; "Oy yopish" joriy oyga qotirilgan
+edi. DB va SQL o'zgarmadi — faqat handler/klaviatura qatlami.
+
+Qo'shildi: `tzutil.prev_month/next_month/months_back/nav_ym` (6 oy chegara,
+buzuq callback → joriy oy), universal `kb.month_nav_kb` / `month_excel_kb` /
+`month_close_pick_kb`. 8 ekranga nav: moliya xulosa (`finsum`) va Excel
+(`finxl`/`finxldl`), PF hisobot (`pfsum`) va Excel (`pfxl`/`pfxldl`), xodim
+"Ish haqqim" (`mysal`, faqat o'z ma'lumoti), audit (`audit`), davomat Excel
+(`attxl`), xodimlar ish haqqi Excel (`salrep`). Excel ekranlari endi
+"{Oy} {yil} uchun Excel tayyorlaymi?" + «📥 Yuklab olish» ko'rinishida.
+"Oy yopish" oxirgi 3 oydan tanlaydi (`mclose:{y}:{m}`); tasdiq klaviaturalari
+oyni callback ichida olib yuradi (`sal_cm_yes:{y}:{m}`, `sal_cm_reopen:{y}:{m}`).
+Yopiq oy sarlavhasida 🔒 (`MONTH_CLOSED_BADGE`). Eski arxiv oqimlari
+(`fin_arc`, `pf_arc`, `sal_arc`) va davomat tahriridagi `is_month_closed`
+tekshiruvlariga tegilmadi. Test: `test_month_nav.py`.
+
+DEPLOY QILINDI: 2026-08-01 12:08, zaxira `backups/pre-deploy-20260801-120824.tgz`.
+Shu deployda menyu muharriri va boshqa to'plangan lokal ishlar ham serverga
+chiqdi (md5 solishtiruv: server allaqachon deyarli sinxron edi, faqat nav
+fayllari va `requirements.txt` (numpy 2.2.6 — venv'dagi haqiqiy versiyaga
+moslandi) yangilandi). GitHub bilan ham sinxron (merge c080759).
+Eslatma: serverda git repo YO'Q — deploy tar orqali.
