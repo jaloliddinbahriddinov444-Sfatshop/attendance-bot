@@ -14,7 +14,7 @@ from services.wifi_verify import start_verify_server
 from services.reminders import reminders_loop
 
 # Handlerlar
-from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler, fin_categories as fin_categories_handler, emp_data as emp_data_handler, broadcast as broadcast_handler, personal_finance as pf_handler, pf_categories as pf_categories_handler, fix_requests as fix_requests_handler
+from handlers import common, registration, attendance, profile, admin, tasks, boss, finance, office_ip, positions as positions_handler, fin_categories as fin_categories_handler, emp_data as emp_data_handler, broadcast as broadcast_handler, personal_finance as pf_handler, pf_categories as pf_categories_handler, fix_requests as fix_requests_handler, menu_editor as menu_editor_handler
 
 
 logging.basicConfig(
@@ -59,6 +59,7 @@ async def main():
         pf_handler.router,
         pf_categories_handler.router,
         fix_requests_handler.router,
+        menu_editor_handler.router,
         common.router,
     )
 

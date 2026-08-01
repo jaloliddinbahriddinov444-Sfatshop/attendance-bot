@@ -127,6 +127,15 @@ class FixReview(StatesGroup):
     entering_reject_comment = State()
 
 
+class ShiftNormFSM(StatesGroup):
+    """Smena normasini vaqt bo'yicha o'zgartirish (Boss/Bosh Admin)."""
+    choose_scope = State()
+    enter_month = State()
+    enter_minutes = State()
+    enter_reason = State()
+    confirm = State()
+
+
 class Broadcast(StatesGroup):
     target = State()
     choosing_employee = State()

@@ -23,6 +23,7 @@ from database import (
     get_employee_by_id, update_employee_profile, update_employee_card,
     set_hourly_rate, set_employee_position, set_employee_daily_rate,
     deactivate_employee, reactivate_employee,
+    get_effective_shift_hours,
 )
 from tzutil import now as tz_now
 
@@ -195,6 +196,7 @@ async def _options_handler(request: web.Request) -> web.Response:
 async def _api_employees(request: web.Request) -> web.Response:
     if not _authorized(request):
         return _forbidden_json()
+    now = tz_now()
     employees = [{
         "id": r["id"],
         "full_name": r["full_name"],
@@ -202,7 +204,9 @@ async def _api_employees(request: web.Request) -> web.Response:
         "position_text": r["position"] or "",
         "position_id": r["position_id"],
         "position_name": r["position_name"],
+        # Lavozim defaulti (positions.work_hours) va shu oyda amalda bo'lgan norma
         "work_hours": r["work_hours"],
+        "shift_hours": get_effective_shift_hours(r["id"], now.year, now.month),
         "role": r["role"] or "employee",
         "is_active": bool(r["is_active"]),
         "hourly_rate": r["hourly_rate"] or 0,

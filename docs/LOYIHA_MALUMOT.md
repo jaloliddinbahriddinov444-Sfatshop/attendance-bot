@@ -248,3 +248,184 @@ Yangi env: `DASHBOARD_API_KEY`, `DASHBOARD_ALLOWED_ORIGIN` (.env.example'da).
 mobil) tekshirildi. Jonli attendance.db tegilmagan. LOKAL BOTNI TO'LIQ ISHGA
 TUSHIRMANG — polling produksiya bilan to'qnashadi (409).
 Reja: `~/.claude/plans/telegram-botimga-aiogram-3-x-cuddly-giraffe.md`
+
+### 2026-07-12 (4) — Dashboard API kengaytirildi: hodimlar CRUD
+
+`services/dashboard.py`ga qo'shildi: GET `/api/dashboard/employees` (faol+nofaol,
+lavozim join — `get_employees_admin()` database.py'da), GET `/api/dashboard/positions`,
+PATCH `/api/dashboard/employees/{id}` (full_name, position_id+daily_rate,
+daily_rate, hourly_rate, karta, is_active — bot validatsiyalari bilan, mavjud
+db funksiyalari orqali). Sfatshop paneli shu API'dan foydalanadi (proxy).
+Deploy qilingan (2026-07-12 kech).
+
+### 2026-07-20 — Arxiv (o'tgan oylar) + PF huquqi (pf_access)
+
+Ish oldidan server↔lokal md5 solishtirildi — 100% sinxron edi.
+
+**1. Arxiv — oxirgi 6 oy (faqat O'QISH, closed_months mantig'iga tegilmagan):**
+- `tzutil.last_months(6)` — joriy oydan orqaga (yil chegarasi hisobga olingan).
+- PF: "🗂 Shaxsiy arxiv" tugmasi → `pf_arc:{YYYY-MM}` → xulosa + "📥 Shu oy uchun
+  Excel" (`pf_arcx:{YYYY-MM}`). Moliya: "🗂 Arxiv" → `fin_arc:` / `fin_arcx:`.
+  Tugma matnlari ATAYIN har xil — bir xil bo'lsa finance router (bot.py'da
+  oldinroq) PF tugmasini ham o'ziga tortib ketardi.
+- Refaktor (kod dublikatsiyasi yo'q, joriy oy ham shularni chaqiradi):
+  `_pf_summary_text(emp_id, year, month, with_today)`,
+  `_finance_summary_text(owner_id, year, month, with_today)`,
+  `_send_pf_excel(...)`, `_send_finance_excel(...)`.
+  `with_today=False` — arxivda "Bugun"/kunlik limit/joriy balans bloklari
+  chiqmaydi (ular faqat joriy oy uchun ma'noli).
+- `fin_arc:` prefiksi `fin_arcx:` ni tutib qolmaydi (':' vs 'x') — mavjud
+  `fin_del:`/`fin_delc:` bilan bir xil naqsh.
+
+**2. pf_access — "📊 Shaxsiy xarajatlarim"ni xodimga ochish:**
+- Migratsiya: `employees.pf_access INTEGER DEFAULT 0` (PRAGMA tekshiruvi bilan,
+  idempotent). `set_pf_access(employee_id, value)`. Ro'yxat uchun alohida so'rov
+  yozilmadi — `get_all_employees()` SELECT * bo'lgani uchun pf_access ni beradi.
+- Bosh Admin: Boshqaruv → "📊 PF huquqi berish" → inline ro'yxat (✅/⬜),
+  `pfacc:{emp_id}` toggle + `edit_reply_markup`. Xodimga DM + yangi main_menu_kb.
+- `main_menu_kb(..., has_pf=False)` — faqat oddiy xodim menyusiga ta'sir qiladi.
+  Chaqiruvchilar: common.py, finance.py, profile.py (3 joy), registration.py.
+- Kirish: `_can_use` = boss | bosh_admin | pf_access==1 (yangi router yo'q).
+
+**3. PF "Ortga" kirish nuqtasi — FSM'siz:**
+`pf_menu_kb(from_finance)` Boss/Bosh Adminga "⬅️ Moliya bo'limi" tugmasini
+beradi, oddiy xodimga BTN_BACK (uni common.py asosiy menyuga qaytaradi).
+FSM holati bilan qilingan dastlabki variant BEKOR QILINDI: holat boshqa
+bo'limlarga o'tganda tozalanmay qolib, Davomatdan "Ortga" ni ham Moliyaga
+yo'naltirardi.
+
+Test: `test_pf_archive.py` (yangi baza + jonli baza NUSXASI ustida — migratsiya
+idempotentligi, last_months, toggle, arxiv xulosalari, klaviaturalar, prefiks
+to'qnashuvi). Excel va +5 soat oy chegarasi alohida sun'iy ma'lumotda sinaldi.
+Jonli attendance.db tegilmagan. HALI DEPLOY QILINMAGAN.
+
+### 2026-07-20 (2) — Menyu tartibi muharriri (MENU_REGISTRY + menu_layouts)
+
+Ish oldidan server↔lokal md5 solishtirildi — sinxron edi.
+
+**Maqsad:** Bosh Admin kod yozmasdan reply-menyulardagi tugmalar JOYLASHUVINI
+o'zgartira olsin. Tugma MATNLARI tegilmaydi (ular handler filtrlariga bog'langan).
+
+**Baza:** `menu_layouts (menu_key PK, layout_json, updated_at)`. Yozuv yo'q =
+standart tartib. `get_menu_layout` (buzuq JSON'da None qaytaradi — bot yiqilmaydi),
+`set_menu_layout` (UPSERT), `reset_menu_layout` (DELETE).
+
+**Reyestr (keyboards.py `MENU_REGISTRY`):** 14 ta menyu — main_employee /
+main_boss / main_bosh_admin, admin_panel_bosh / admin_panel, grp_employees /
+grp_attendance / grp_finance / grp_control, admin_settings, ip_menu, boss_panel,
+finance_menu, pf_menu. Har birida `title`, `buttons` (kalit -> texts.py matni),
+`default` (hozirgi kod tartibi AYNAN).
+
+**`build_menu_kb(menu_key, visible_keys=None, overrides=None)`:**
+- `visible_keys` — shartli tugmalar (main_employee'da admin/personal_finance).
+  Filtr layoutdan QAT'I NAZAR ishlaydi, bo'sh qolgan qator tushadi.
+- `overrides` — {kalit: matn}; pf_menu'da ortga tugmasi kirish nuqtasiga qarab
+  BTN_BACK yoki BTN_PF_BACK_FINANCE bo'ladi.
+- `normalize_layout()` — notanish/takroriy kalit tashlanadi, qatorda maks 2 ta
+  tugma (MAX_ROW_BUTTONS), bo'sh qator olib tashlanadi, reyestrda bor-u
+  layoutda yo'q tugma OXIRIGA qo'shiladi (yangi tugma yo'qolib qolmasin).
+Mavjud 8 ta kb funksiyasi ichi shunga almashtirildi — imzolar va chaqiruv
+joylari O'ZGARMADI, handlerlarga tegilmadi.
+
+**Muharrir (`handlers/menu_editor.py`, router common'dan oldin):**
+Boshqaruv → "🧩 Menyu tartibi". Callbacklar: `mlay:{menu_key}` (`:list`/`:cancel`),
+`mmv:{menu_key}:{btn_key}:up|dn|mrg`, `mlayr:{menu_key}[:yes]` (reset, tasdiq bilan),
+`mnop` (nom tugmasi). Ichki model — tekis ro'yxat `[[kalit, qo'shilganmi]]`:
+up/dn faqat KALITLARNI almashtiradi (qatorlar shakli saqlanadi), mrg esa
+"qo'shilganmi" bayrog'ini toggle qiladi (3 ta tugma yig'ilib qolmasligi
+tekshiriladi). Chekka holatda callback answer bildirish beradi, xato emas.
+
+DIQQAT: `mlay:` prefiksi `mlayr:` ni tutmaydi (':' vs 'r') — mavjud
+`fin_del:`/`fin_delc:` bilan bir xil naqsh. Eng uzun callback 40 bayt (limit 64).
+
+Testlar: `test_menu_parity.py` (17 ta menyu refaktordan keyin AYNAN eskidek —
+yangi va eski baza nusxasida), `test_menu_layout.py` (surish/birlashtirish/
+ajratish/reset, shartli tugmalar, normalizatsiya, buzuq JSON, chekka holatlar).
+Jonli attendance.db tegilmagan. HALI DEPLOY QILINMAGAN.
+
+### 2026-07-20 (3) — Mini App drag-and-drop menyu muharriri
+
+1-QISM (menu_layouts + MENU_REGISTRY + build_menu_kb) oldingi bosqichda
+qilingan edi — faqat 2-QISM (Mini App) qo'shildi.
+
+**MUHIM — nginx'ga tegilmadi:** serverdagi nginx'da faqat sanab o'tilgan
+yo'llar 9090 (bot) ga boradi, qolgani 8000 (sfatshop backend) ga. `location
+/dashboard` PREFIKS bo'yicha ishlagani uchun muharrir yo'li ATAYIN
+`/dashboard/menu-editor` qilib olindi — yangi nginx bloki va reload KERAK EMAS.
+Boshqa yo'l (masalan `/menu-editor`) tanlansa 8000-portga tushib 404 berardi.
+
+**Web (`services/menu_editor_web.py`, `setup_menu_editor_routes(app)`)**:
+`GET /dashboard/menu-editor?menu={key}` → HTML. Ma'lumot (yorliqlar + joriy
+layout + default + maxRow) server tomonda `__DATA__` o'rniga JSON qilib
+joylanadi — alohida ochiq API endpoint YO'Q. Notanish/bo'sh menu → 404.
+Sahifa kalitsiz ochiladi, lekin faqat tugma YORLIQLARINI ko'rsatadi (ular
+botda ham ko'rinadi); saqlash esa Telegram imzolagan web_app_data orqali va
+faqat Bosh Adminga.
+
+**Sahifa:** vanilla JS/CSS, tashqi kutubxonasiz (telegram-web-app.js dan
+tashqari). Ranglar `themeParams` dan (qorong'i/yorug'). Surish — Pointer
+Events (HTML5 draggable mobilda ishlamaydi): 300ms bosib ushlash → ghost
+element ko'tariladi (scale+soya+haptic), qatorlar orasi = yangi qator (ko'k
+chiziq), qator ustiga = birlashtirish (to'la qatorda qizil ramka, rad).
+300ms tugamasdan surilsa drag bekor bo'ladi — sahifa skrolli buzilmaydi.
+
+**Bot (`handlers/menu_editor.py`):** `mlay:{menu_key}` endi
+`KeyboardButton(web_app=WebAppInfo(...))` yuboradi (inline EMAS — sendData
+faqat keyboard-button rejimida ishlaydi). PUBLIC_URL bo'sh bo'lsa eski inline
+muharrir fallback sifatida qoladi (lokal ishlab chiqish uchun).
+`@router.message(F.web_app_data)` — JSON parse → Bosh Admin tekshiruvi →
+`normalize_layout` (notanish/takroriy kalit tashlanadi, qatorda maks 2,
+yetishmagani oxiriga) → `set_menu_layout` → tasdiq + admin menyu qaytariladi.
+
+Testlar: `test_menu_webapp.py` (route 200/404, ma'lumot inyeksiyasi, saqlash,
+3-tugma rad, ruxsatsiz foydalanuvchi, 8 xil buzuq JSON, shartli tugmalar,
+normalizatsiya, sendData hajmi 278 bayt). Surish mantig'i BRAUZERDA haqiqiy
+pointer hodisalari bilan sinaldi: birlashtirish, to'la qatorni rad etish,
+qatorlar orasiga qo'yish, ajratish, qisqa bosish, skroll niyati, Standart
+tugmasi, qorong'i mavzu, sendData yuki — hammasi to'g'ri, konsolda xato yo'q.
+Jonli attendance.db tegilmagan. HALI DEPLOY QILINMAGAN.
+
+### 2026-07-20 (4) — Menyu muharriri: yagona navigatsiyali Mini App
+
+Oldingi versiyada har menyu alohida tanlanib alohida tahrirlanardi. Endi bitta
+kirish nuqtasi: «🧩 Menyu tartibi» → darhol Mini App (menu parametrisiz URL),
+ichida menyular bo'ylab yuriladi.
+
+**Navigatsiya grafi:** `MENU_REGISTRY` ga har menyu uchun `"targets"` qo'shildi
+(tugma kaliti → ochiladigan menyu, yoki `"back"`). Xarita HAQIQIY handlerlardan
+olindi: `BTN_ADMIN`→admin_panel/admin_panel_bosh (rolga qarab), `BTN_BOSS_FINANCE`
+→finance_menu, `BTN_PERSONAL_FINANCE`→pf_menu, `BTN_GRP_*`→grp_*,
+`BTN_OFFICE_IP`→ip_menu, `BTN_ADMIN_SETTINGS`→admin_settings,
+`BTN_BACK`/`BTN_ADMIN_BACK`→back. `main_employee` da `"conditional"` to'plami
+(admin, personal_finance) — muharrirda ◌ belgisi bilan xira ko'rsatiladi.
+
+**DIQQAT — yetim menyular:** `boss_panel` va `grp_finance` navigatsiya orqali
+OCHILMAYDI, chunki `BTN_BOSS_PANEL` hech qaysi klaviaturada yo'q (faqat handleri
+bor, boss.py:30) va `BTN_GRP_FINANCE` Bosh Admin panelida yo'q. Ular tahrirlab
+bo'lmas bo'lib qolmasligi uchun sahifa ildizida "Alohida menyular" ro'yxatida
+chiqadi (`_reachable()` grafni hisoblab, yetimlarni topadi — yangi menyu
+qo'shilsa avtomatik ishlaydi).
+
+**Sahifa:** rol almashtirgich (Xodim/Boss/Bosh Admin — asosiy menyuning 3
+varianti), breadcrumb + Telegram BackButton, slide animatsiya. ODDIY BOSISH =
+navigatsiya, BOSIB USHLASH (300ms) = surish. Target'siz tugma bosilsa toast.
+O'zgarishlar JS state'da menyular bo'ylab yig'iladi; pastda "💾 Saqlash (N)".
+
+**sendData formati:** `{"layouts": {menu_key: [[...]], ...}}` — FAQAT o'zgargan
+menyular. Eski bitta-menyuli format OLIB TASHLANDI (inline muharrir ham —
+o'lik kod qoldirilmadi: `_apply/_flatten/_unflatten/_editor_kb`, `mlay:`/`mmv:`/
+`mlayr:`/`mnop` handlerlari va 12 ta MENU_EDITOR_* matn o'chirildi).
+
+**Nozik joy:** agar kelgan layout koddagi standart bilan bir xil bo'lsa, bot
+`set_menu_layout` emas, `reset_menu_layout` chaqiradi (yozuv O'CHADI). Aks holda
+kelajakda koddagi standart o'zgarganda menyu eskisida muzlab qolardi.
+
+Testlar: `test_menu_webapp.py` (11 tekshiruv — barcha menyu inyeksiyasi,
+target'lar, orphans, 2 menyuni bir yuborishda saqlash, standartga qaytarishda
+yozuv o'chishi, 3-tugma rad, ruxsatsiz foydalanuvchi, 9 xil buzuq JSON —
+ESKI format ham rad etiladi, sendData eng yomon holatda 1647 bayt).
+`test_menu_layout.py` da navigatsiya grafi butunligi tekshiriladi.
+BRAUZERDA sinaldi: rol almashtirish, 3 darajali breadcrumb, ortga qaytish,
+menyular orasida yurganda o'zgarishlar yo'qolmasligi, target'siz tugma toast'i,
+3-tugma rad, "Shu menyuni standartga", yetim menyu ochilishi — konsolda xato yo'q.
+Jonli attendance.db tegilmagan. HALI DEPLOY QILINMAGAN.

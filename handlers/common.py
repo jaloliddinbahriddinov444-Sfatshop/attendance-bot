@@ -19,7 +19,8 @@ def _main_kb(employee):
         return kb.main_menu_kb(is_bosh_admin=True)
     if role == "boss":
         return kb.main_menu_kb(is_boss=True)
-    return kb.main_menu_kb(is_admin=bool(employee["is_admin"]))
+    return kb.main_menu_kb(is_admin=bool(employee["is_admin"]),
+                           has_pf=bool(employee["pf_access"]))
 
 
 @router.message(CommandStart())

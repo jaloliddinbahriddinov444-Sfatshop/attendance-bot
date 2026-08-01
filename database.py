@@ -1,4 +1,5 @@
 """SQLite ma'lumotlar bazasi - barcha funksiyalar"""
+import json
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -209,6 +210,14 @@ def init_db():
             sent_date TEXT NOT NULL,
             PRIMARY KEY (employee_id, reminder_type, sent_date)
         );
+
+        -- Menyu tugmalari joylashuvi (Bosh Admin bot ichidan tahrirlaydi).
+        -- Yozuv yo'q = keyboards.py MENU_REGISTRY dagi standart tartib.
+        CREATE TABLE IF NOT EXISTS menu_layouts (
+            menu_key    TEXT PRIMARY KEY,
+            layout_json TEXT NOT NULL,
+            updated_at  TIMESTAMP DEFAULT (datetime('now'))
+        );
         """)
 
         # Migratsiya: hourly_rate ustunini employees jadvaliga qo'shish
@@ -244,6 +253,12 @@ def init_db():
                 "ALTER TABLE employees ADD COLUMN card_holder_name TEXT DEFAULT ''"
             )
 
+        # Migratsiya: shaxsiy moliya bo'limiga kirish huquqi (0/1)
+        if "pf_access" not in columns:
+            conn.execute(
+                "ALTER TABLE employees ADD COLUMN pf_access INTEGER DEFAULT 0"
+            )
+
         # Migratsiya: linked_employee_id ustuni yo'q bo'lsa qo'shish
         fe_cols = [row[1] for row in conn.execute("PRAGMA table_info(finance_entries)").fetchall()]
         if "linked_employee_id" not in fe_cols:
@@ -253,6 +268,9 @@ def init_db():
 
     # Lavozimlar tizimini yaratish
     init_positions()
+
+    # Smena normasi tarixi tizimini yaratish
+    init_shift_norms()
 
     # Moliya turkumlari tizimini yaratish
     init_finance_categories()
@@ -648,6 +666,52 @@ def get_all_employees(active_only=True):
                 "SELECT * FROM employees WHERE is_active = 1 ORDER BY full_name"
             ).fetchall()
         return conn.execute("SELECT * FROM employees ORDER BY full_name").fetchall()
+
+
+# ===== Menyu joylashuvi =====
+
+def get_menu_layout(menu_key: str):
+    """Saqlangan joylashuv (qatorlar ro'yxati) yoki None — standart ishlatiladi."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT layout_json FROM menu_layouts WHERE menu_key = ?", (menu_key,)
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        layout = json.loads(row["layout_json"])
+    except (ValueError, TypeError):
+        return None
+    # Buzuq yozuv botni yiqitmasin — faqat ro'yxatlar ro'yxati qabul qilinadi
+    if not isinstance(layout, list) or not all(isinstance(r, list) for r in layout):
+        return None
+    return layout
+
+
+def set_menu_layout(menu_key: str, layout):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO menu_layouts (menu_key, layout_json, updated_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(menu_key) DO UPDATE SET "
+            "layout_json = excluded.layout_json, updated_at = excluded.updated_at",
+            (menu_key, json.dumps(layout))
+        )
+
+
+def reset_menu_layout(menu_key: str):
+    """Saqlangan joylashuvni o'chirish — standart tartibga qaytadi."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM menu_layouts WHERE menu_key = ?", (menu_key,))
+
+
+def set_pf_access(employee_id: int, value: int):
+    """Xodimga 'Shaxsiy xarajatlarim' bo'limini yoqish (1) yoki o'chirish (0)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE employees SET pf_access = ? WHERE id = ?",
+            (1 if value else 0, employee_id)
+        )
 
 
 def get_all_admins():
@@ -2002,6 +2066,100 @@ def set_employee_daily_rate(employee_id: int, daily_rate: int):
         )
 
 
+# ===== Smena normasi tarixi (vaqt bo'yicha amal qiluvchi) =====
+
+def init_shift_norms() -> None:
+    """Smena normasi tarixi jadvalini yaratish (idempotent)."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS shift_norms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL,                -- 'employee' yoki 'position'
+                target_id INTEGER NOT NULL,         -- employee_id yoki position_id
+                effective_from TEXT NOT NULL,       -- 'YYYY-MM' (shu oydan boshlab amal qiladi)
+                norm_minutes INTEGER NOT NULL,      -- yangi smena normasi (daqiqada)
+                reason TEXT,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT (datetime('now')),
+                UNIQUE(scope, target_id, effective_from)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_shift_norms_lookup
+                ON shift_norms(scope, target_id, effective_from)
+        """)
+
+
+def set_shift_norm(scope: str, target_id: int, effective_from: str, norm_minutes: int,
+                    reason: str = None, created_by: int = None) -> None:
+    """Smena normasini belgilash/yangilash (bir oyga bitta yozuv — UPSERT)."""
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO shift_norms (scope, target_id, effective_from, norm_minutes, reason, created_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scope, target_id, effective_from) DO UPDATE SET
+                norm_minutes = excluded.norm_minutes,
+                reason = excluded.reason,
+                created_by = excluded.created_by,
+                created_at = datetime('now')
+        """, (scope, target_id, effective_from, norm_minutes, reason, created_by))
+
+
+def get_scope_shift_norm(scope: str, target_id: int, year: int, month: int):
+    """Faqat shu scope darajasida (kaskadsiz) amaldagi normani (daqiqada) qaytaradi, topilmasa None."""
+    ym = f"{year:04d}-{month:02d}"
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT norm_minutes FROM shift_norms
+            WHERE scope=? AND target_id=? AND effective_from<=?
+            ORDER BY effective_from DESC LIMIT 1
+        """, (scope, target_id, ym)).fetchone()
+        return row["norm_minutes"] if row else None
+
+
+def get_effective_shift_norm(employee_id: int, year: int, month: int) -> int:
+    """Muayyan oy uchun amaldagi smena normasini (daqiqada) qaytaradi.
+
+    Ustuvorlik: xodim darajasidagi norma -> lavozim darajasidagi norma -> positions.work_hours.
+    """
+    emp = get_employee_by_id(employee_id)
+    if not emp:
+        return 9 * 60
+
+    minutes = get_scope_shift_norm("employee", employee_id, year, month)
+    if minutes is not None:
+        return minutes
+
+    position_id = emp["position_id"] if "position_id" in emp.keys() else None
+    if position_id:
+        minutes = get_scope_shift_norm("position", position_id, year, month)
+        if minutes is not None:
+            return minutes
+
+    pos = get_position(position_id) if position_id else None
+    return int((pos["work_hours"] if pos else 9) * 60)
+
+
+def get_effective_shift_hours(employee_id: int, year: int, month: int) -> str:
+    """Amaldagi normani ko'rsatish uchun soatda qaytaradi ('9.5' yoki '10')."""
+    hours = get_effective_shift_norm(employee_id, year, month) / 60
+    return str(int(hours)) if hours == int(hours) else f"{hours:.1f}"
+
+
+def delete_shift_norm(norm_id: int) -> None:
+    with get_db() as conn:
+        conn.execute("DELETE FROM shift_norms WHERE id=?", (norm_id,))
+
+
+def get_shift_norm_history(scope: str, target_id: int) -> list:
+    """Berilgan xodim/lavozim uchun norma tarixi (eng yangisi birinchi)."""
+    with get_db() as conn:
+        return conn.execute("""
+            SELECT * FROM shift_norms WHERE scope=? AND target_id=?
+            ORDER BY effective_from DESC
+        """, (scope, target_id)).fetchall()
+
+
 def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
     """Kunlik stavka asosida oylik asosiy ish haqqi hisoblash.
 
@@ -2024,8 +2182,9 @@ def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
         return int((minutes / 60.0) * rate)
 
     pos = get_position(position_id)
-    work_hours = pos["work_hours"] if pos else 9
-    standard_minutes = work_hours * 60
+    standard_minutes = get_effective_shift_norm(employee_id, year, month)
+    if standard_minutes <= 0:
+        standard_minutes = int((pos["work_hours"] if pos else 9) * 60)
 
     rows = get_monthly_attendance(employee_id, year, month)
     total = 0

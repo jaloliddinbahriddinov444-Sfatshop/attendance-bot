@@ -26,7 +26,8 @@ def _menu_for(employee):
     """Xodim yozuviga mos asosiy menyu klaviaturasi."""
     is_admin = bool(employee["is_admin"]) if employee else False
     is_boss = (employee["role"] == "boss") if employee else False
-    return kb.main_menu_kb(is_admin=is_admin, is_boss=is_boss)
+    has_pf = bool(employee["pf_access"]) if employee else False
+    return kb.main_menu_kb(is_admin=is_admin, is_boss=is_boss, has_pf=has_pf)
 
 
 # ===== Phase 4: begona /start -> telefon orqali bog'lash =====

@@ -92,18 +92,10 @@ async def boss_emp_detail(call: CallbackQuery):
         return
 
     text = _format_employee_detail(emp)
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb_inline = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📥 Hodim ma'lumotlari excel hisoboti",
-            callback_data=f"empdata_excel:{emp_id}"
-        )],
-        [InlineKeyboardButton(
-            text=texts.BTN_EMP_RATE_CHANGE,
-            callback_data=f"empdata_rate:{emp_id}"
-        )],
-    ])
-    await call.message.edit_text(text, reply_markup=kb_inline)
+    # Kirish allaqachon Boss/Bosh Admin bilan cheklangan — norma tugmasi ko'rsatiladi
+    await call.message.edit_text(
+        text, reply_markup=kb.emp_card_actions_kb(emp_id, show_shift_norm=True)
+    )
     await call.answer()
 
 
