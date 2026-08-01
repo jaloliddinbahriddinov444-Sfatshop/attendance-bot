@@ -2,15 +2,17 @@
 import asyncio
 import io
 import logging
+import re
 from datetime import datetime
-from tzutil import now as tz_now, to_local
+from tzutil import now as tz_now, to_local, nav_ym, last_months
 from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 import texts
 import keyboards as kb
-from states import AdminPanel, AdminSalary, TaskCreate, AdminAddEmployee
+from states import AdminPanel, AdminSalary, TaskCreate, AdminAddEmployee, ShiftNormFSM
 from database import (
     get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
     deactivate_employee, set_admin_status, get_active_employees_count,
@@ -27,7 +29,9 @@ from database import (
     create_task, set_role, get_boss, get_bosses,
     find_employee_by_phone, create_pending_employee,
     update_employee_profile, reactivate_employee, phone_key,
-    get_setting,
+    get_setting, set_pf_access,
+    get_position, get_employees_by_position_id,
+    set_shift_norm, get_effective_shift_norm, get_scope_shift_norm,
 )
 from config import MAX_EMPLOYEES, PUBLIC_URL, DASHBOARD_API_KEY
 
@@ -433,11 +437,51 @@ async def admin_today(message: Message):
 
 # ===== Excel hisobot =====
 
+def _attxl_prompt(year: int, month: int):
+    """Davomat Excel oy tanlash xabari."""
+    text = texts.MONTH_EXCEL_PROMPT.format(
+        month=texts.MONTHS_UZ[month], year=year
+    )
+    if is_month_closed(year, month):
+        text = texts.MONTH_CLOSED_BADGE + text
+    return text, kb.month_excel_kb("attxl", year, month)
+
+
 @router.message(F.text == texts.BTN_ADMIN_EXPORT)
 async def admin_export(message: Message):
     if not _is_admin(message):
         return
+    now = tz_now()
+    text, markup = _attxl_prompt(now.year, now.month)
+    await message.answer(text, reply_markup=markup)
 
+
+@router.callback_query(F.data.startswith("attxl:"))
+async def admin_export_nav(call: CallbackQuery):
+    if not _is_admin(call):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    text, markup = _attxl_prompt(year, month)
+    try:
+        await call.message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("attxldl:"))
+async def admin_export_download(call: CallbackQuery):
+    if not _is_admin(call):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    await call.answer("⏳ Tayyorlanmoqda...")
+    await _send_attendance_excel(call.message, year, month)
+
+
+async def _send_attendance_excel(message: Message, year: int, month: int):
+    """Tanlangan oy uchun davomat Excel faylini yuboradi."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
@@ -445,8 +489,6 @@ async def admin_export(message: Message):
         await message.answer("❌ openpyxl kutubxonasi o'rnatilmagan.")
         return
 
-    now = tz_now()
-    year, month = now.year, now.month
     employees = get_all_employees(active_only=True)
 
     wb = Workbook()
@@ -1470,23 +1512,20 @@ async def admin_salary_back_menu(call: CallbackQuery, state: FSMContext):
 
 # ===== Phase 3: Audit tarixi =====
 
-@router.callback_query(F.data == "sal_audit")
-async def admin_salary_audit(call: CallbackQuery, state: FSMContext):
-    me = get_employee_by_telegram_id(call.from_user.id)
-    if not me or not me["is_admin"]:
-        await call.answer(texts.NO_PERMISSION, show_alert=True)
-        return
-
-    now = tz_now()
-    entries = get_audit_entries(now.year, now.month, limit=30)
+def _audit_view(year: int, month: int) -> str:
+    """Berilgan oy uchun audit tarixi matni."""
+    entries = get_audit_entries(year, month, limit=30)
     if not entries:
-        await call.message.edit_text(texts.AUDIT_EMPTY)
-        await call.answer()
-        return
+        text = texts.AUDIT_EMPTY
+        if is_month_closed(year, month):
+            text = texts.MONTH_CLOSED_BADGE + text
+        return text
 
     text = texts.AUDIT_HEADER.format(
-        month=texts.MONTHS_UZ[now.month], year=now.year, limit=len(entries)
+        month=texts.MONTHS_UZ[month], year=year, limit=len(entries)
     )
+    if is_month_closed(year, month):
+        text = texts.MONTH_CLOSED_BADGE + text
     for e in entries:
         type_info = texts.SALARY_TYPES.get(e["entry_type"], ("📋", "?", "+"))
         try:
@@ -1511,8 +1550,38 @@ async def admin_salary_audit(call: CallbackQuery, state: FSMContext):
     # Telegram message limit
     if len(text) > 4000:
         text = text[:3900] + "\n\n<i>... (qisqartirildi)</i>"
+    return text
 
-    await call.message.edit_text(text)
+
+@router.callback_query(F.data == "sal_audit")
+async def admin_salary_audit(call: CallbackQuery, state: FSMContext):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    now = tz_now()
+    await call.message.edit_text(
+        _audit_view(now.year, now.month),
+        reply_markup=kb.month_nav_kb("audit", now.year, now.month)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("audit:"))
+async def admin_salary_audit_nav(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    try:
+        await call.message.edit_text(
+            _audit_view(year, month),
+            reply_markup=kb.month_nav_kb("audit", year, month)
+        )
+    except TelegramBadRequest:
+        pass  # matn o'zgarmagan bo'lsa e'tiborsiz
     await call.answer()
 
 
@@ -1524,51 +1593,66 @@ async def admin_close_month_prompt(call: CallbackQuery, state: FSMContext):
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    now = tz_now()
-    if is_month_closed(now.year, now.month):
-        # Allaqachon yopilgan — qayta ochish taklif qilamiz
+    # Oxirgi 3 oy (joriy, -1, -2) — har biri yopiq/ochiq holati bilan
+    months = [(y, m, is_month_closed(y, m)) for y, m in last_months(3)]
+    await call.message.edit_text(
+        texts.MONTH_CLOSE_PICK,
+        reply_markup=kb.month_close_pick_kb(months)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mclose:"))
+async def admin_close_month_pick(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or not me["is_admin"]:
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    if is_month_closed(year, month):
+        # Yopiq oy — qayta ochish tasdig'i
         await call.message.edit_text(
-            f"🔒 <b>{texts.MONTHS_UZ[now.month]} {now.year}</b> oyi allaqachon yopilgan.\n\n"
-            f"Qayta ochaymi?",
-            reply_markup=kb.month_reopen_confirm_kb()
+            f"🔒 <b>{texts.MONTHS_UZ[month]} {year}</b>\n\n"
+            + texts.MONTH_ALREADY_CLOSED,
+            reply_markup=kb.month_reopen_confirm_kb(year, month)
         )
     else:
         await call.message.edit_text(
             texts.MONTH_CLOSE_CONFIRM.format(
-                month=texts.MONTHS_UZ[now.month], year=now.year
+                month=texts.MONTHS_UZ[month], year=year
             ),
-            reply_markup=kb.month_close_confirm_kb()
+            reply_markup=kb.month_close_confirm_kb(year, month)
         )
     await call.answer()
 
 
-@router.callback_query(F.data == "sal_cm_yes")
+@router.callback_query(F.data.startswith("sal_cm_yes:"))
 async def admin_close_month_do(call: CallbackQuery, state: FSMContext):
     me = get_employee_by_telegram_id(call.from_user.id)
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    now = tz_now()
-    close_month(now.year, now.month, me["id"])
+    year, month = nav_ym(call.data)
+    close_month(year, month, me["id"])
     await call.message.edit_text(
         texts.MONTH_CLOSE_DONE.format(
-            month=texts.MONTHS_UZ[now.month], year=now.year
+            month=texts.MONTHS_UZ[month], year=year
         )
     )
     await call.answer("🔒 Yopildi")
 
 
-@router.callback_query(F.data == "sal_cm_reopen")
+@router.callback_query(F.data.startswith("sal_cm_reopen:"))
 async def admin_reopen_month(call: CallbackQuery, state: FSMContext):
     me = get_employee_by_telegram_id(call.from_user.id)
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    now = tz_now()
-    reopen_month(now.year, now.month)
+    year, month = nav_ym(call.data)
+    reopen_month(year, month)
     await call.message.edit_text(
         texts.MONTH_REOPEN_DONE.format(
-            month=texts.MONTHS_UZ[now.month], year=now.year
+            month=texts.MONTHS_UZ[month], year=year
         )
     )
     await call.answer("🔓 Ochildi")
@@ -1578,6 +1662,243 @@ async def admin_reopen_month(call: CallbackQuery, state: FSMContext):
 async def admin_close_month_no(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(texts.CANCELLED)
     await call.answer()
+
+
+# ===== Smena normasini o'zgartirish (vaqt bo'yicha amal qiluvchi) =====
+
+def _is_boss_or_bosh_admin(telegram_id: int) -> bool:
+    from roles import is_boss, is_bosh_admin
+    emp = get_employee_by_telegram_id(telegram_id)
+    return is_boss(emp) or is_bosh_admin(emp)
+
+
+def _fmt_hours(minutes: int) -> str:
+    """Daqiqani o'qish uchun qulay formatda ko'rsatadi (480 -> '8', 510 -> '8.5')."""
+    hours = minutes / 60
+    return str(int(hours)) if hours == int(hours) else f"{hours:.1f}"
+
+
+def _parse_month(text: str):
+    m = re.fullmatch(r"(\d{4})-(\d{2})", text.strip())
+    if not m:
+        return None
+    year, month = int(m.group(1)), int(m.group(2))
+    if not (1 <= month <= 12) or not (2000 <= year <= 2100):
+        return None
+    return year, month
+
+
+def _parse_norm_minutes(text: str):
+    try:
+        value = float(text.strip().replace(",", "."))
+    except ValueError:
+        return None
+    if 1 <= value <= 24:
+        return round(value * 60)
+    if 60 <= value <= 1440:
+        return round(value)
+    return None
+
+
+@router.callback_query(F.data.startswith("empdata_shnorm:"))
+async def shnorm_start(call: CallbackQuery, state: FSMContext):
+    """Xodim kartochkasidan kirish — xodim allaqachon tanlangan."""
+    if not _is_boss_or_bosh_admin(call.from_user.id):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    emp = get_employee_by_id(int(call.data.split(":", 1)[1]))
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    pos_id = emp["position_id"] if "position_id" in emp.keys() else None
+    pos = get_position(pos_id) if pos_id else None
+
+    await state.clear()
+    await state.update_data(
+        shnorm_emp_id=emp["id"], shnorm_emp_name=emp["full_name"],
+        shnorm_pos_id=pos_id, shnorm_pos_name=pos["name"] if pos else None,
+    )
+    await state.set_state(ShiftNormFSM.choose_scope)
+    await call.message.answer(
+        texts.SHIFT_NORM_CHOOSE_SCOPE.format(name=emp["full_name"]),
+        reply_markup=kb.shift_norm_scope_kb(emp["full_name"], pos["name"] if pos else None)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("shnorm_scope:"))
+async def shnorm_choose_scope(call: CallbackQuery, state: FSMContext):
+    scope = call.data.split(":", 1)[1]
+    if scope == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    if scope == "employee":
+        target_id, target_name = data["shnorm_emp_id"], data["shnorm_emp_name"]
+    else:
+        target_id, target_name = data["shnorm_pos_id"], data["shnorm_pos_name"]
+        if not target_id:
+            await call.answer("❌ Xodimga lavozim belgilanmagan", show_alert=True)
+            return
+
+    await state.update_data(shnorm_scope=scope, shnorm_target_id=target_id,
+                            shnorm_target_name=target_name)
+    await _shnorm_ask_month(call, state)
+    await call.answer()
+
+
+async def _shnorm_ask_month(call: CallbackQuery, state: FSMContext):
+    current_month = f"{tz_now().year:04d}-{tz_now().month:02d}"
+    data = await state.get_data()
+    await state.set_state(ShiftNormFSM.enter_month)
+    await call.message.edit_text(
+        texts.SHIFT_NORM_ASK_MONTH.format(target=data["shnorm_target_name"], current_month=current_month),
+        reply_markup=kb.shift_norm_month_kb(current_month)
+    )
+
+
+async def _shnorm_ask_minutes(state: FSMContext, year: int, month: int):
+    """Amal oyini saqlab, hozirgi normani hisoblab, so'rov matnini qaytaradi."""
+    data = await state.get_data()
+    await state.update_data(shnorm_year=year, shnorm_month=month)
+    await state.set_state(ShiftNormFSM.enter_minutes)
+
+    if data["shnorm_scope"] == "employee":
+        current_minutes = get_effective_shift_norm(data["shnorm_target_id"], year, month)
+    else:
+        current_minutes = get_scope_shift_norm("position", data["shnorm_target_id"], year, month)
+        if current_minutes is None:
+            pos = get_position(data["shnorm_target_id"])
+            current_minutes = int((pos["work_hours"] if pos else 9) * 60)
+
+    await state.update_data(shnorm_old_minutes=current_minutes)
+    return texts.SHIFT_NORM_ASK_MINUTES.format(
+        target=data["shnorm_target_name"], month=f"{year:04d}-{month:02d}",
+        current_hours=_fmt_hours(current_minutes)
+    )
+
+
+@router.callback_query(F.data.startswith("shnorm_month:"))
+async def shnorm_month_button(call: CallbackQuery, state: FSMContext):
+    value = call.data.split(":", 1)[1]
+    if value == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    parsed = _parse_month(value)
+    if not parsed:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    text = await _shnorm_ask_minutes(state, parsed[0], parsed[1])
+    await call.message.edit_text(text)
+    await call.answer()
+
+
+@router.message(ShiftNormFSM.enter_month, F.text)
+async def shnorm_month_text(message: Message, state: FSMContext):
+    parsed = _parse_month(message.text)
+    if not parsed:
+        await message.answer(texts.SHIFT_NORM_MONTH_INVALID)
+        return
+    text = await _shnorm_ask_minutes(state, parsed[0], parsed[1])
+    await message.answer(text)
+
+
+@router.message(ShiftNormFSM.enter_minutes, F.text)
+async def shnorm_minutes_text(message: Message, state: FSMContext):
+    minutes = _parse_norm_minutes(message.text)
+    if minutes is None:
+        await message.answer(texts.SHIFT_NORM_MINUTES_INVALID)
+        return
+    await state.update_data(shnorm_new_minutes=minutes)
+    await state.set_state(ShiftNormFSM.enter_reason)
+    await message.answer(texts.SHIFT_NORM_ASK_REASON, reply_markup=kb.shift_norm_reason_kb())
+
+
+async def _shnorm_confirm_text(state: FSMContext) -> str:
+    data = await state.get_data()
+    scope_name = "Xodim" if data["shnorm_scope"] == "employee" else "Lavozim"
+    await state.set_state(ShiftNormFSM.confirm)
+    return texts.SHIFT_NORM_CONFIRM.format(
+        scope_name=scope_name, target_label=scope_name,
+        target=data["shnorm_target_name"],
+        month=f"{data['shnorm_year']:04d}-{data['shnorm_month']:02d}",
+        old_hours=_fmt_hours(data["shnorm_old_minutes"]),
+        new_hours=_fmt_hours(data["shnorm_new_minutes"]),
+        reason=data.get("shnorm_reason") or "—"
+    )
+
+
+@router.callback_query(F.data.startswith("shnorm_reason:"))
+async def shnorm_reason_button(call: CallbackQuery, state: FSMContext):
+    action = call.data.split(":", 1)[1]
+    if action == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    await state.update_data(shnorm_reason=None)
+    text = await _shnorm_confirm_text(state)
+    await call.message.edit_text(text, reply_markup=kb.shift_norm_confirm_kb())
+    await call.answer()
+
+
+@router.message(ShiftNormFSM.enter_reason, F.text)
+async def shnorm_reason_text(message: Message, state: FSMContext):
+    reason = message.text.strip()
+    await state.update_data(shnorm_reason=reason if reason else None)
+    text = await _shnorm_confirm_text(state)
+    await message.answer(text, reply_markup=kb.shift_norm_confirm_kb())
+
+
+@router.callback_query(F.data.startswith("shnorm_confirm:"))
+async def shnorm_confirm(call: CallbackQuery, state: FSMContext, bot: Bot):
+    action = call.data.split(":", 1)[1]
+    if action != "yes":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    me = get_employee_by_telegram_id(call.from_user.id)
+    month_str = f"{data['shnorm_year']:04d}-{data['shnorm_month']:02d}"
+
+    set_shift_norm(
+        scope=data["shnorm_scope"],
+        target_id=data["shnorm_target_id"],
+        effective_from=month_str,
+        norm_minutes=data["shnorm_new_minutes"],
+        reason=data.get("shnorm_reason"),
+        created_by=me["id"] if me else None,
+    )
+
+    target_label = "Xodim" if data["shnorm_scope"] == "employee" else "Lavozim"
+    await call.message.edit_text(texts.SHIFT_NORM_SAVED.format(
+        target_label=target_label, target=data["shnorm_target_name"],
+        month=month_str, new_hours=_fmt_hours(data["shnorm_new_minutes"])
+    ))
+    await call.answer("✅ Saqlandi")
+
+    notify_text = texts.NOTIFY_SHIFT_NORM_CHANGED.format(
+        month=month_str, new_hours=_fmt_hours(data["shnorm_new_minutes"]),
+        reason=data.get("shnorm_reason") or "—"
+    )
+    if data["shnorm_scope"] == "employee":
+        emp = get_employee_by_id(data["shnorm_target_id"])
+        if emp and emp["telegram_id"]:
+            await _send_notification(bot, emp["telegram_id"], notify_text)
+    else:
+        for emp in get_employees_by_position_id(data["shnorm_target_id"]):
+            if emp["telegram_id"]:
+                await _send_notification(bot, emp["telegram_id"], notify_text)
+
+    await state.clear()
 
 
 # ===== Phase 2: Admin vazifa berish =====
@@ -1871,6 +2192,74 @@ async def admin_boss_set_confirm(call: CallbackQuery, bot: Bot):
     await call.message.edit_text(texts.ADMIN_BOSS_DONE.format(name=emp["full_name"]))
     await call.answer("✅")
     await _send_notification(bot, emp["telegram_id"], texts.BOSS_NOTIFY_ASSIGNED)
+
+
+# ===== PF huquqi: "Shaxsiy xarajatlarim" bo'limini xodimga ochish =====
+
+def _pf_access_employees():
+    """Boss/Bosh Admin'siz faol xodimlar — ularda bo'lim Moliya orqali bor."""
+    return [e for e in get_all_employees(active_only=True)
+            if e["role"] not in ("boss", "bosh_admin")]
+
+
+@router.message(F.text == texts.BTN_ADMIN_PF_ACCESS)
+async def admin_pf_access(message: Message, state: FSMContext):
+    if not _is_bosh_admin(message):
+        return
+    await state.clear()
+    employees = _pf_access_employees()
+    if not employees:
+        await message.answer(texts.ADMIN_PF_ACCESS_NO_EMP,
+                             reply_markup=_admin_kb(message))
+        return
+    await message.answer(texts.ADMIN_PF_ACCESS_PICK,
+                         reply_markup=kb.pf_access_kb(employees))
+
+
+@router.callback_query(F.data.startswith("pfacc:"))
+async def admin_pf_access_toggle(call: CallbackQuery, bot: Bot):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not me or me["role"] != "bosh_admin":
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    raw = call.data.split(":", 1)[1]
+    if raw == "cancel":
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    try:
+        emp_id = int(raw)
+    except ValueError:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    emp = get_employee_by_id(emp_id)
+    if not emp:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    new_value = 0 if emp["pf_access"] else 1
+    set_pf_access(emp_id, new_value)
+    await call.answer("✅ Yoqildi" if new_value else "⬜ O'chirildi")
+    await call.message.edit_reply_markup(
+        reply_markup=kb.pf_access_kb(_pf_access_employees())
+    )
+
+    # Xodimga xabar + yangi menyu (eski klaviatura qolib ketmasligi uchun)
+    if emp["telegram_id"]:
+        await _send_notification(
+            bot, emp["telegram_id"],
+            texts.PF_ACCESS_NOTIFY_ON if new_value else texts.PF_ACCESS_NOTIFY_OFF
+        )
+        try:
+            await bot.send_message(
+                emp["telegram_id"], texts.MAIN_MENU,
+                reply_markup=kb.main_menu_kb(
+                    is_admin=bool(emp["is_admin"]), has_pf=bool(new_value)
+                )
+            )
+        except Exception as e:
+            logger.warning(f"PF menyu yuborilmadi: tg={emp['telegram_id']} xato={e}")
 
 
 @router.callback_query(F.data == "boss_remove_list")

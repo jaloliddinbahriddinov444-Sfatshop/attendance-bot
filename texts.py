@@ -645,6 +645,65 @@ SALARY_DETAIL_LINE = (
     "\n💬 <i>{reason}</i>"
 )
 
+# ===== Smena normasini o'zgartirish (vaqt bo'yicha amal qiluvchi) =====
+BTN_SHIFT_NORM = "⏱ Ish vaqtini o'zgartirish"
+
+SHIFT_NORM_CHOOSE_SCOPE = (
+    "⏱ <b>Ish vaqtini o'zgartirish</b> — {name}\n\n"
+    "Kunlik smena normasi o'zgartiriladi. Bu tanlangan oydan boshlab doimiy amal qiladi.\n\n"
+    "Kimga qo'llanadi?"
+)
+
+BTN_SHIFT_NORM_EMPLOYEE = "👤 Faqat {name}"
+BTN_SHIFT_NORM_POSITION = "👥 Butun lavozim — {position}"
+
+SHIFT_NORM_ASK_MONTH = (
+    "📅 <b>{target}</b>\n\n"
+    "Qaysi oydan boshlab amal qilsin?\n\n"
+    "Joriy oy: <code>{current_month}</code>\n"
+    "Boshqa oy uchun <code>YYYY-MM</code> formatida yozing (masalan: <code>2026-08</code>)."
+)
+
+BTN_SHIFT_NORM_CURRENT_MONTH = "✅ Joriy oy ({current_month})"
+
+SHIFT_NORM_MONTH_INVALID = "❌ Noto'g'ri format. Iltimos, <code>YYYY-MM</code> ko'rinishida yozing (masalan: 2026-08)."
+
+SHIFT_NORM_ASK_MINUTES = (
+    "⏱ <b>{target}</b>\n"
+    "Amal qilish oyi: <b>{month}</b>\n"
+    "Hozirgi norma: <b>{current_hours} soat/kun</b>\n\n"
+    "Yangi normani kiriting — soat (masalan: <code>8</code>) yoki daqiqa (masalan: <code>480</code>):"
+)
+
+SHIFT_NORM_MINUTES_INVALID = "❌ Iltimos, to'g'ri son kiriting (1–24 soat yoki mos daqiqa oralig'ida)."
+
+SHIFT_NORM_ASK_REASON = "💬 Sababni kiriting (ixtiyoriy):"
+BTN_SHIFT_NORM_SKIP_REASON = "⏭ O'tkazib yuborish"
+
+SHIFT_NORM_CONFIRM = (
+    "⚠️ <b>Tasdiqlash kerak</b>\n\n"
+    "Qamrov: <b>{scope_name}</b>\n"
+    "{target_label}: <b>{target}</b>\n"
+    "Amal qilish oyi: <b>{month}</b>\n"
+    "Norma: <b>{old_hours} soat</b> → <b>{new_hours} soat</b>\n"
+    "Sabab: {reason}\n\n"
+    "Tasdiqlaysizmi?"
+)
+
+SHIFT_NORM_SAVED = (
+    "✅ <b>Smena normasi o'zgartirildi</b>\n\n"
+    "{target_label}: <b>{target}</b>\n"
+    "Amal qilish oyi: <b>{month}</b>\n"
+    "Yangi norma: <b>{new_hours} soat/kun</b>"
+)
+
+NOTIFY_SHIFT_NORM_CHANGED = (
+    "⏱ <b>Sizning smena normangiz o'zgartirildi</b>\n\n"
+    "Amal qilish oyi: <b>{month}</b>\n"
+    "Yangi norma: <b>{new_hours} soat/kun</b>\n"
+    "Sabab: {reason}"
+)
+
 # ===== Phase 3: Hisobot, Audit, Oy yopish =====
 
 # Salary submenu (kengaytirilgan)
@@ -682,6 +741,12 @@ MONTH_BLOCKED = (
 )
 
 MONTH_ALREADY_CLOSED = "ℹ️ Bu oy allaqachon yopilgan. Qayta ochaymi?"
+
+# ===== Oy navigatsiyasi (◀️ ▶️ arxiv ko'rish) =====
+MONTH_CLOSED_BADGE = "🔒 "
+MONTH_CLOSE_PICK = "🔒 <b>Oy yopish</b>\n\nQaysi oyni boshqarasiz?"
+MONTH_EXCEL_PROMPT = "📥 <b>{month} {year}</b> uchun Excel tayyorlaymi?"
+BTN_MONTH_EXCEL_DL = "📥 Yuklab olish"
 
 
 # ===== Vazifalar (Phase 2) =====
@@ -829,6 +894,54 @@ BOSS_NOTIFY_ASSIGNED = (
 )
 BOSS_NOTIFY_REMOVED = "ℹ️ Sizning Boss rolingiz o'chirildi."
 
+# ===== PF huquqi (Shaxsiy xarajatlarim bo'limini xodimga ochish) =====
+BTN_ADMIN_PF_ACCESS = "📊 PF huquqi berish"
+
+# ===== Menyu tartibi muharriri (faqat Bosh Admin) =====
+BTN_MENU_LAYOUT = "🧩 Menyu tartibi"
+MENU_EDITOR_ROW = "{n}) {buttons}"
+
+# Mini App (drag-and-drop) muharriri
+BTN_MENU_EDITOR_OPEN = "✏️ Tahrirlashni ochish"
+MENU_EDITOR_WEBAPP_ASK = (
+    "🧩 <b>Menyu tartibi</b>\n\n"
+    "Quyidagi <b>{btn}</b> tugmasini bosing.\n\n"
+    "Muharrir ichida menyular bo'ylab yurasiz: tugmani <b>oddiy bosish</b> "
+    "bo'limni ochadi, <b>bosib ushlab turish</b> esa surib joylashtiradi.\n"
+    "Bir necha menyuni birdan tahrirlab, oxirida bitta marta saqlaysiz.\n\n"
+    "<i>Tugma matnlari o'zgarmaydi, faqat joylashuvi.</i>"
+)
+MENU_EDITOR_NO_PUBLIC_URL = (
+    "⚠️ Menyu muharriri Telegram Mini App orqali ishlaydi va buning uchun "
+    "HTTPS server kerak (PUBLIC_URL sozlanmagan).\n\n"
+    "Bu funksiya faqat jonli serverda mavjud."
+)
+MENU_EDITOR_WEBAPP_SAVED = (
+    "✅ <b>{cnt} ta menyu saqlandi</b>\n\n"
+    "{menus}\n\n"
+    "<i>Yangi tartib menyuga qayta kirganda ko'rinadi.</i>"
+)
+MENU_EDITOR_WEBAPP_BAD_DATA = "❌ Ma'lumot buzuq keldi — saqlanmadi."
+MENU_EDITOR_WEBAPP_BAD_MENU = "❌ Saqlanadigan menyu topilmadi."
+ADMIN_PF_ACCESS_PICK = (
+    "📊 <b>Shaxsiy xarajatlarim — huquq berish</b>\n\n"
+    "Xodim ustiga bosing — huquq yoqiladi/o'chiriladi.\n"
+    "✅ — yoqilgan · ⬜ — o'chiq"
+)
+ADMIN_PF_ACCESS_NO_EMP = "❌ Faol xodim yo'q."
+PF_ACCESS_NOTIFY_ON = (
+    "📊 <b>Yangi bo'lim ochildi!</b>\n\n"
+    "Sizga «📊 Shaxsiy xarajatlarim» bo'limi berildi — "
+    "shaxsiy kirim va chiqimlaringizni kuzatishingiz mumkin.\n"
+    "Yozuvlaringizni faqat siz ko'rasiz.\n\n"
+    "Asosiy menyuda yangi tugma paydo bo'ldi. "
+    "Ko'rinmasa /start bosing."
+)
+PF_ACCESS_NOTIFY_OFF = (
+    "ℹ️ «📊 Shaxsiy xarajatlarim» bo'limi yopildi.\n"
+    "Menyu yangilanishi uchun /start bosing."
+)
+
 
 # ===== Moliya bo'limi (Phase 4) =====
 
@@ -873,6 +986,7 @@ BTN_FINANCE_NOTE_SKIP = "⏭ Izohsiz"
 BTN_FINANCE_CATEGORY_OTHER = "📝 Boshqa (qo'lda izoh)"
 BTN_FINANCE_TODAY = "📅 Bugungi sana"
 BTN_FINANCE_DELETE = "🗑 Yozuvni o'chirish"
+BTN_FINANCE_ARCHIVE = "🗂 Arxiv"
 
 # Dialog
 FINANCE_MENU = (
@@ -953,6 +1067,14 @@ FINANCE_SUMMARY_TODAY_INCOME = "\n➕ Bugungi kirim: +{total:,} so'm"
 FINANCE_SUMMARY_TODAY_EMPTY = "\n\n📅 Bugun hali yozuv yo'q."
 
 FINANCE_EXCEL_EMPTY = "ℹ️ Bu oyda yozuvlar yo'q — Excel yaratish ma'nosiz."
+
+# ===== Arxiv (o'tgan oylar) — Moliya va Shaxsiy moliya uchun umumiy =====
+ARCHIVE_PICK_MONTH = (
+    "🗂 <b>Arxiv — o'tgan oylar</b>\n\n"
+    "Qaysi oy hisobotini ko'rmoqchisiz?"
+)
+BTN_ARCHIVE_EXCEL = "📥 Shu oy uchun Excel"
+ARCHIVE_MONTH_EXCEL_EMPTY = "📭 {month} {year} oyida yozuv yo'q — Excel bo'sh bo'ladi."
 FINANCE_NO_PERMISSION = "❌ Moliya bo'limi faqat Boss va Bosh Admin uchun."
 FINANCE_PICK_EMPLOYEE_ADVANCE = (
     "👤 <b>Hodimlar uchun Avans</b>\n\n"
@@ -1261,6 +1383,9 @@ BTN_PF_EXPENSE = "➖ Chiqim"
 BTN_PF_SUMMARY = "📈 Bu oy hisoboti"
 BTN_PF_EXCEL = "📥 Shaxsiy Excel"
 BTN_PF_DELETE = "🗑 Shaxsiy yozuvni o'chirish"
+BTN_PF_ARCHIVE = "🗂 Shaxsiy arxiv"
+# Moliya orqali kirganlar uchun ortga tugmasi (oddiy xodimda BTN_BACK turadi)
+BTN_PF_BACK_FINANCE = "⬅️ Moliya bo'limi"
 
 PF_PICK_CAT_INCOME = "💰 Kirim turini tanlang:"
 PF_PICK_CAT_EXPENSE = "💸 Chiqim turini tanlang:"

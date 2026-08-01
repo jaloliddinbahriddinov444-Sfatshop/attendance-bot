@@ -19,7 +19,11 @@ from database import (
     get_monthly_attendance, get_monthly_worked_minutes, get_monthly_base_salary,
     get_active_salary_entries, get_salary_totals_by_type,
     get_open_tasks_with_skips, set_employee_daily_rate,
+    get_effective_shift_norm, get_effective_shift_hours,
+    is_month_closed,
 )
+from tzutil import nav_ym
+from aiogram.exceptions import TelegramBadRequest
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -101,9 +105,8 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
 
     standard_minutes = None
     if daily_rate and position_id:
-        pos = get_position(position_id)
-        if pos:
-            standard_minutes = pos["work_hours"] * 60
+        # Amaldagi smena normasi (shu oyga tegishli) — positions.work_hours faqat default
+        standard_minutes = get_effective_shift_norm(emp["id"], year, month)
 
     # === Davomat ma'lumotlari ===
     records = get_monthly_attendance(emp["id"], year, month)
@@ -251,6 +254,12 @@ def _is_admin(uid: int) -> bool:
     return bool(emp and emp["is_admin"])
 
 
+def _is_boss_or_bosh_admin(uid: int) -> bool:
+    from roles import is_boss, is_bosh_admin
+    emp = get_employee_by_telegram_id(uid)
+    return is_boss(emp) or is_bosh_admin(emp)
+
+
 def _fmt_time(ts: str, fmt="%H:%M") -> str:
     try:
         return to_local(ts).strftime(fmt)
@@ -302,7 +311,7 @@ def _build_full_profile(emp_id: int) -> str:
     )
     if daily_rate and pos:
         out += texts.EMP_FULL_POSITION_RATE.format(
-            rate=daily_rate, hours=pos["work_hours"]
+            rate=daily_rate, hours=get_effective_shift_hours(emp_id, year, month)
         )
 
     # Davomat — bu oy
@@ -494,14 +503,11 @@ async def emp_data_detail(call: CallbackQuery):
     if len(profile_text) > 4000:
         profile_text = profile_text[:4000] + "\n\n<i>... (qisqartirildi)</i>"
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📥 Hodim ma'lumotlari excel hisoboti", callback_data=f"empdata_excel:{emp_id}")],
-        [InlineKeyboardButton(text=texts.BTN_EMP_RATE_CHANGE, callback_data=f"empdata_rate:{emp_id}")],
-        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"empdata_back_emp:{emp_id}")],
-    ])
-
-    await call.message.edit_text(profile_text, reply_markup=back_kb)
+    await call.message.edit_text(profile_text, reply_markup=kb.emp_card_actions_kb(
+        emp_id,
+        show_shift_norm=_is_boss_or_bosh_admin(call.from_user.id),
+        back_callback=f"empdata_back_emp:{emp_id}"
+    ))
     await call.answer()
 
 
@@ -557,14 +563,53 @@ async def emp_excel_single(call: CallbackQuery):
     )
 
 
+def _salrep_prompt(year: int, month: int):
+    """Xodimlar ish haqqi Excel — oy tanlash xabari."""
+    text = texts.MONTH_EXCEL_PROMPT.format(
+        month=texts.MONTHS_UZ[month], year=year
+    )
+    if is_month_closed(year, month):
+        text = texts.MONTH_CLOSED_BADGE + text
+    return text, kb.month_excel_kb("salrep", year, month)
+
+
 @router.message(F.text == texts.BTN_ADMIN_EMP_EXCEL)
 async def emp_excel_all(message: Message):
-    """Barcha faol xodimlar — har biri alohida sheet, bitta Excel fayl."""
+    """Barcha faol xodimlar ish haqqi Excel — oy tanlash bilan."""
     if not _is_admin(message.from_user.id):
         return
-    await message.answer("⏳ Excel fayl tayyorlanmoqda...")
     now = tz_now()
-    year, month = now.year, now.month
+    text, markup = _salrep_prompt(now.year, now.month)
+    await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("salrep:"))
+async def emp_excel_all_nav(call: CallbackQuery):
+    if not _is_admin(call.from_user.id):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    text, markup = _salrep_prompt(year, month)
+    try:
+        await call.message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("salrepdl:"))
+async def emp_excel_all_download(call: CallbackQuery):
+    if not _is_admin(call.from_user.id):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    await call.answer("⏳ Tayyorlanmoqda...")
+    await _send_all_emp_excel(call.message, year, month)
+
+
+async def _send_all_emp_excel(message: Message, year: int, month: int):
+    """Barcha faol xodimlar — har biri alohida sheet, bitta Excel fayl."""
+    await message.answer("⏳ Excel fayl tayyorlanmoqda...")
 
     try:
         file_bytes = await asyncio.to_thread(_build_all_emp_excel, year, month)
@@ -614,7 +659,7 @@ async def emp_rate_change_start(call: CallbackQuery, state: FSMContext):
         texts.EMP_RATE_CHANGE_PROMPT.format(
             name=emp["full_name"],
             position=pos["name"] if pos else emp["position"],
-            hours=pos["work_hours"] if pos else 9,
+            hours=get_effective_shift_hours(emp_id, tz_now().year, tz_now().month),
             min=pos["min_rate"] if pos else 0,
             max=pos["max_rate"] if pos else 0,
             current=daily_rate,

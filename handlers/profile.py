@@ -2,8 +2,9 @@
 import re
 import logging
 from datetime import datetime, timedelta
-from tzutil import now as tz_now, to_local
+from tzutil import now as tz_now, to_local, nav_ym
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
@@ -14,7 +15,8 @@ from database import (
     get_employee_by_telegram_id, get_monthly_attendance, get_office_config,
     get_monthly_worked_minutes, get_salary_totals_by_type,
     get_active_salary_entries, update_employee_card,
-    get_position, get_monthly_base_salary,
+    get_position, get_monthly_base_salary, get_effective_shift_hours,
+    is_month_closed,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,8 @@ router = Router()
 
 def _menu_for(employee):
     return kb.main_menu_kb(is_admin=bool(employee["is_admin"]),
-                           is_boss=(employee["role"] == "boss"))
+                           is_boss=(employee["role"] == "boss"),
+                           has_pf=bool(employee["pf_access"]))
 
 
 @router.message(F.text == texts.BTN_PROFILE)
@@ -195,17 +198,8 @@ async def show_stats(message: Message):
     )
 
 
-@router.message(F.text == texts.BTN_SALARY)
-async def show_salary(message: Message):
-    """Xodim — joriy oy ish haqqi xulosasi (kunlik yoki soatbay stavka)"""
-    employee = get_employee_by_telegram_id(message.from_user.id)
-    if not employee:
-        await message.answer(texts.NOT_REGISTERED)
-        return
-
-    now = tz_now()
-    year, month = now.year, now.month
-
+def _salary_view(employee, year: int, month: int):
+    """Berilgan oy uchun ish haqqi matni. Stavka yo'q bo'lsa None."""
     daily_rate = employee["daily_rate"] if "daily_rate" in employee.keys() else 0
     position_id = employee["position_id"] if "position_id" in employee.keys() else None
     hourly_rate = employee["hourly_rate"] if "hourly_rate" in employee.keys() else 0
@@ -214,11 +208,7 @@ async def show_salary(message: Message):
     base = get_monthly_base_salary(employee["id"], year, month)
 
     if not base and not daily_rate and not hourly_rate:
-        await message.answer(
-            texts.SALARY_NO_RATE,
-            reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
-        )
-        return
+        return None
 
     totals = get_salary_totals_by_type(employee["id"], year, month)
     total = (base - totals["avans"] - totals["jarima"]
@@ -232,7 +222,7 @@ async def show_salary(message: Message):
         summary = texts.SALARY_HEADER_DAILY.format(
             month=texts.MONTHS_UZ[month], year=year,
             position=pos["name"] if pos else employee["position"],
-            work_hours=pos["work_hours"] if pos else 9,
+            work_hours=get_effective_shift_hours(employee["id"], year, month),
             daily_rate=daily_rate,
             days=days_worked,
             base=base,
@@ -272,7 +262,45 @@ async def show_salary(message: Message):
     else:
         details = texts.SALARY_DETAILS_EMPTY
 
+    text = summary + details
+    if is_month_closed(year, month):
+        text = texts.MONTH_CLOSED_BADGE + text
+    return text
+
+
+@router.message(F.text == texts.BTN_SALARY)
+async def show_salary(message: Message):
+    """Xodim — joriy oy ish haqqi xulosasi (kunlik yoki soatbay stavka)"""
+    employee = get_employee_by_telegram_id(message.from_user.id)
+    if not employee:
+        await message.answer(texts.NOT_REGISTERED)
+        return
+
+    now = tz_now()
+    text = _salary_view(employee, now.year, now.month)
+    if text is None:
+        await message.answer(texts.SALARY_NO_RATE, reply_markup=_menu_for(employee))
+        return
     await message.answer(
-        summary + details,
-        reply_markup=kb.main_menu_kb(is_admin=bool(employee["is_admin"]), is_boss=(employee["role"] == "boss"))
+        text, reply_markup=kb.month_nav_kb("mysal", now.year, now.month)
     )
+
+
+@router.callback_query(F.data.startswith("mysal:"))
+async def show_salary_nav(call: CallbackQuery):
+    # Xodim faqat O'ZINING ma'lumotini ko'radi — callbackdan emp olinmaydi
+    employee = get_employee_by_telegram_id(call.from_user.id)
+    if not employee:
+        await call.answer(texts.NOT_REGISTERED, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    text = _salary_view(employee, year, month)
+    if text is None:
+        text = texts.SALARY_NO_RATE
+    try:
+        await call.message.edit_text(
+            text, reply_markup=kb.month_nav_kb("mysal", year, month)
+        )
+    except TelegramBadRequest:
+        pass  # matn o'zgarmagan bo'lsa e'tiborsiz
+    await call.answer()

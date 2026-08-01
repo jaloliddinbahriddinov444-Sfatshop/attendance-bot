@@ -35,10 +35,23 @@ from database import (
     finance_category_label,
     ensure_owner_categories,
 )
-from tzutil import now as tz_now, fmt as fmt_local
+from tzutil import now as tz_now, fmt as fmt_local, last_months, nav_ym
+from aiogram.exceptions import TelegramBadRequest
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+ARCHIVE_MONTHS = 6
+
+
+def _parse_ym(raw: str):
+    """'2026-07' → (2026, 7), xato bo'lsa None."""
+    try:
+        y, m = raw.split("-")
+        y, m = int(y), int(m)
+    except (ValueError, AttributeError):
+        return None
+    return (y, m) if 1 <= m <= 12 else None
 
 
 def _can_use_finance(emp) -> bool:
@@ -59,7 +72,8 @@ def _back_kb(emp):
         return kb.main_menu_kb(is_bosh_admin=True)
     if role == "boss":
         return kb.main_menu_kb(is_boss=True)
-    return kb.main_menu_kb(is_admin=bool(emp["is_admin"]))
+    return kb.main_menu_kb(is_admin=bool(emp["is_admin"]),
+                           has_pf=bool(emp["pf_access"]))
 
 
 # ===== Kirish =====
@@ -537,25 +551,28 @@ async def finance_delete_confirm(call: CallbackQuery):
     await call.answer("O'chirildi")
 
 
-@router.message(F.text == texts.BTN_FINANCE_SUMMARY)
-async def finance_summary(message: Message):
-    me = get_employee_by_telegram_id(message.from_user.id)
-    if not _can_use_finance(me):
-        await message.answer(texts.FINANCE_NO_PERMISSION)
-        return
+# ===== Oy xulosasi (joriy oy va arxiv uchun umumiy) =====
 
+def _finance_summary_text(owner_id: int, year: int, month: int,
+                          with_today: bool) -> str:
+    """Oy xulosasi matni.
+
+    with_today — bugungi blok va joriy balans (faqat joriy oy uchun ma'noli).
+    """
     now = tz_now()
-    summary = get_monthly_finance_summary(me["id"], now.year, now.month)
+    summary = get_monthly_finance_summary(owner_id, year, month)
     out = texts.FINANCE_SUMMARY_HEADER.format(
-        month=texts.MONTHS_UZ[now.month], year=now.year
+        month=texts.MONTHS_UZ[month], year=year
     )
 
     if not summary["by_category"]["income"] and not summary["by_category"]["expense"]:
         out += texts.FINANCE_SUMMARY_EMPTY
-        out += texts.FINANCE_SUMMARY_TODAY_EMPTY
-        out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
-        await message.answer(out)
-        return
+        if with_today:
+            out += texts.FINANCE_SUMMARY_TODAY_EMPTY
+            out += texts.FINANCE_SUMMARY_BALANCE.format(
+                balance=get_finance_balance(owner_id)
+            )
+        return out
 
     if summary["by_category"]["income"]:
         out += texts.FINANCE_SUMMARY_INCOME.format(total=summary["income_total"])
@@ -583,8 +600,11 @@ async def finance_summary(message: Message):
     else:
         out += texts.FINANCE_SUMMARY_NET_ZERO
 
+    if not with_today:
+        return out
+
     # Bugungi kun bloki
-    today = get_today_finance_summary(me["id"], now.strftime("%Y-%m-%d"))
+    today = get_today_finance_summary(owner_id, now.strftime("%Y-%m-%d"))
     date_lbl = now.strftime("%d.%m")
     if today["cnt"] == 0:
         out += texts.FINANCE_SUMMARY_TODAY_EMPTY
@@ -607,11 +627,78 @@ async def finance_summary(message: Message):
                 total=today["income_total"]
             )
 
-    out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(me["id"]))
-    await message.answer(out)
+    out += texts.FINANCE_SUMMARY_BALANCE.format(balance=get_finance_balance(owner_id))
+    return out
 
 
-# ===== Excel hisobot =====
+def _finsum_view(me, year: int, month: int):
+    """Oy xulosasi: matn + navigatsiya klaviaturasi. Yopiq oyga 🔒 belgi."""
+    now = tz_now()
+    is_cur = (year, month) == (now.year, now.month)
+    text = _finance_summary_text(me["id"], year, month, with_today=is_cur)
+    if is_month_closed(year, month):
+        text = texts.MONTH_CLOSED_BADGE + text
+    return text, kb.month_nav_kb("finsum", year, month)
+
+
+@router.message(F.text == texts.BTN_FINANCE_SUMMARY)
+async def finance_summary(message: Message):
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _can_use_finance(me):
+        await message.answer(texts.FINANCE_NO_PERMISSION)
+        return
+
+    now = tz_now()
+    text, markup = _finsum_view(me, now.year, now.month)
+    await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("finsum:"))
+async def finance_summary_nav(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    text, markup = _finsum_view(me, year, month)
+    try:
+        await call.message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest:
+        pass  # matn o'zgarmagan bo'lsa e'tiborsiz
+    await call.answer()
+
+
+# ===== Excel hisobot (joriy oy va arxiv uchun umumiy) =====
+
+async def _send_finance_excel(message: Message, emp, year: int, month: int) -> bool:
+    """Tanlangan oy uchun moliya Excel'ini yuboradi. Yozuv bo'lmasa False."""
+    entries = get_monthly_finance_entries(emp["id"], year, month)
+    if not entries:
+        return False
+
+    summary = get_monthly_finance_summary(emp["id"], year, month)
+    opening = get_finance_balance_before(emp["id"], year, month)
+    file_bytes = await asyncio.to_thread(
+        _build_finance_excel, entries, summary, year, month,
+        emp["full_name"], opening
+    )
+    filename = f"moliya_{year}_{month:02d}_{emp['full_name'].split()[0]}.xlsx"
+    await message.answer_document(
+        BufferedInputFile(file_bytes, filename=filename),
+        caption=f"📥 Moliya hisoboti — {texts.MONTHS_UZ[month]} {year}"
+    )
+    return True
+
+
+def _finxl_prompt(year: int, month: int):
+    """Excel oy tanlash xabari: matn + nav + «Yuklab olish» tugmasi."""
+    text = texts.MONTH_EXCEL_PROMPT.format(
+        month=texts.MONTHS_UZ[month], year=year
+    )
+    if is_month_closed(year, month):
+        text = texts.MONTH_CLOSED_BADGE + text
+    return text, kb.month_excel_kb("finxl", year, month)
+
 
 @router.message(F.text == texts.BTN_FINANCE_EXCEL)
 async def finance_excel(message: Message):
@@ -621,22 +708,97 @@ async def finance_excel(message: Message):
         return
 
     now = tz_now()
-    entries = get_monthly_finance_entries(me["id"], now.year, now.month)
-    if not entries:
-        await message.answer(texts.FINANCE_EXCEL_EMPTY)
+    text, markup = _finxl_prompt(now.year, now.month)
+    await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("finxl:"))
+async def finance_excel_nav(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    text, markup = _finxl_prompt(year, month)
+    try:
+        await call.message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("finxldl:"))
+async def finance_excel_download(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    await call.answer("⏳ Tayyorlanmoqda...")
+    if not await _send_finance_excel(call.message, me, year, month):
+        await call.message.answer(texts.ARCHIVE_MONTH_EXCEL_EMPTY.format(
+            month=texts.MONTHS_UZ[month], year=year
+        ))
+
+
+# ===== Arxiv (o'tgan oylar — faqat o'qish) =====
+
+@router.message(F.text == texts.BTN_FINANCE_ARCHIVE)
+async def finance_archive(message: Message, state: FSMContext):
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _can_use_finance(me):
+        await message.answer(texts.FINANCE_NO_PERMISSION)
+        return
+    await state.clear()
+    await message.answer(
+        texts.ARCHIVE_PICK_MONTH,
+        reply_markup=kb.archive_months_kb("fin_arc", last_months(ARCHIVE_MONTHS))
+    )
+
+
+@router.callback_query(F.data.startswith("fin_arc:"))
+async def finance_archive_month(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
         return
 
-    summary = get_monthly_finance_summary(me["id"], now.year, now.month)
-    opening = get_finance_balance_before(me["id"], now.year, now.month)
-    file_bytes = await asyncio.to_thread(
-        _build_finance_excel, entries, summary, now.year, now.month,
-        me["full_name"], opening
+    raw = call.data.split(":", 1)[1]
+    if raw == "cancel":
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    ym = _parse_ym(raw)
+    if not ym:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    year, month = ym
+
+    await call.message.edit_text(
+        _finance_summary_text(me["id"], year, month, with_today=False),
+        reply_markup=kb.archive_excel_kb("fin_arcx", year, month)
     )
-    filename = f"moliya_{now.year}_{now.month:02d}_{me['full_name'].split()[0]}.xlsx"
-    await message.answer_document(
-        BufferedInputFile(file_bytes, filename=filename),
-        caption=f"📥 Moliya hisoboti — {texts.MONTHS_UZ[now.month]} {now.year}"
-    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("fin_arcx:"))
+async def finance_archive_excel(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use_finance(me):
+        await call.answer(texts.FINANCE_NO_PERMISSION, show_alert=True)
+        return
+
+    ym = _parse_ym(call.data.split(":", 1)[1])
+    if not ym:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    year, month = ym
+
+    await call.answer("⏳ Tayyorlanmoqda...")
+    if not await _send_finance_excel(call.message, me, year, month):
+        await call.message.answer(texts.ARCHIVE_MONTH_EXCEL_EMPTY.format(
+            month=texts.MONTHS_UZ[month], year=year
+        ))
 
 
 def _build_finance_excel(entries, summary, year: int, month: int,

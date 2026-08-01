@@ -20,19 +20,52 @@ from database import (
     ensure_owner_pf_categories, get_pf_category_by_ckey, pf_category_label,
 )
 from states import PersonalFinance
-from tzutil import now as tz_now, fmt as fmt_local
+from tzutil import now as tz_now, fmt as fmt_local, last_months, nav_ym
+from aiogram.exceptions import TelegramBadRequest
 
 logger = logging.getLogger(__name__)
 router = Router()
 
+ARCHIVE_MONTHS = 6
+
 
 def _can_use(emp) -> bool:
+    """Boss, Bosh Admin yoki pf_access berilgan xodim."""
     if not emp:
         return False
+    try:
+        if emp["role"] in ("boss", "bosh_admin"):
+            return True
+    except (KeyError, IndexError):
+        pass
+    try:
+        return bool(emp["pf_access"])
+    except (KeyError, IndexError):
+        return False
+
+
+def _from_finance(emp) -> bool:
+    """PF'ga Moliya bo'limi orqali kirganmi? (Boss/Bosh Admin menyusida PF tugmasi yo'q)"""
     try:
         return emp["role"] in ("boss", "bosh_admin")
     except (KeyError, IndexError):
         return False
+
+
+def _pf_kb(message: Message):
+    """PF menyusi — ortga tugmasi kirish nuqtasiga qarab tanlanadi."""
+    me = get_employee_by_telegram_id(message.from_user.id)
+    return kb.pf_menu_kb(from_finance=_from_finance(me))
+
+
+def _parse_ym(raw: str):
+    """'2026-07' → (2026, 7), xato bo'lsa None."""
+    try:
+        y, m = raw.split("-")
+        y, m = int(y), int(m)
+    except (ValueError, AttributeError):
+        return None
+    return (y, m) if 1 <= m <= 12 else None
 
 
 def _parse_date(raw: str):
@@ -54,7 +87,19 @@ async def pf_open(message: Message, state: FSMContext):
         await message.answer(texts.NO_PERMISSION)
         return
     await state.clear()
-    await message.answer(texts.PF_MENU, reply_markup=kb.pf_menu_kb())
+    await message.answer(texts.PF_MENU, reply_markup=_pf_kb(message))
+
+
+@router.message(F.text == texts.BTN_PF_BACK_FINANCE)
+async def pf_back_to_finance(message: Message, state: FSMContext):
+    """Moliya orqali kirganlar uchun ortga tugmasi. Oddiy xodimda BTN_BACK
+    turadi — uni common.py asosiy menyuga qaytaradi."""
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _from_finance(me):
+        await message.answer(texts.NO_PERMISSION)
+        return
+    await state.clear()
+    await message.answer(texts.FINANCE_MENU, reply_markup=kb.finance_menu_kb())
 
 
 # ─── Kirim boshlash ─────────────────────────────────────────────────────────
@@ -127,7 +172,7 @@ async def pf_cat_chosen(call: CallbackQuery, state: FSMContext):
 async def pf_amount_entered(message: Message, state: FSMContext):
     if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
-        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        await message.answer(texts.CANCELLED, reply_markup=_pf_kb(message))
         return
     raw = message.text.replace(" ", "").replace(",", "").replace(".", "")
     if not raw.isdigit() or int(raw) <= 0:
@@ -144,7 +189,7 @@ async def pf_amount_entered(message: Message, state: FSMContext):
 async def pf_note_entered(message: Message, state: FSMContext):
     if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
-        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        await message.answer(texts.CANCELLED, reply_markup=_pf_kb(message))
         return
     note = "" if message.text == texts.BTN_PF_NOTE_SKIP else message.text
     await state.update_data(pf_note=note)
@@ -159,7 +204,7 @@ async def pf_date_entered(message: Message, state: FSMContext):
     raw = message.text.strip()
     if raw in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
-        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        await message.answer(texts.CANCELLED, reply_markup=_pf_kb(message))
         return
     if raw == texts.BTN_PF_TODAY:
         entry_date = tz_now().date()
@@ -183,29 +228,22 @@ async def pf_date_entered(message: Message, state: FSMContext):
     sign = "+" if entry_type == "income" else "-"
     await message.answer(
         texts.PF_SAVED.format(sign=sign, amount=amount, cat=cat_name),
-        reply_markup=kb.pf_menu_kb()
+        reply_markup=_pf_kb(message)
     )
 
 
-# ─── Bu oy hisoboti ─────────────────────────────────────────────────────────
+# ─── Oy hisoboti (joriy oy va arxiv uchun umumiy) ───────────────────────────
 
-@router.message(F.text == texts.BTN_PF_SUMMARY)
-async def pf_summary(message: Message, state: FSMContext):
-    me = get_employee_by_telegram_id(message.from_user.id)
-    if not _can_use(me):
-        await message.answer(texts.NO_PERMISSION)
-        return
-    await state.clear()
+def _pf_summary_text(emp_id: int, year: int, month: int, with_today: bool):
+    """Oy xulosasi matni. Yozuv bo'lmasa None.
 
-    now = tz_now()
-    summary = pf_get_summary(me["id"], now.year, now.month)
-    month_name = texts.MONTHS_UZ[now.month]
-
+    with_today — bugungi blok va kunlik byudjet (faqat joriy oy uchun ma'noli).
+    """
+    summary = pf_get_summary(emp_id, year, month)
     if not summary["income"] and not summary["expense"]:
-        await message.answer(texts.PF_SUMMARY_EMPTY)
-        return
+        return None
 
-    out = texts.PF_SUMMARY_HEADER.format(month=month_name, year=now.year)
+    out = texts.PF_SUMMARY_HEADER.format(month=texts.MONTHS_UZ[month], year=year)
 
     # Kirim
     if summary["income"]:
@@ -234,15 +272,18 @@ async def pf_summary(message: Message, state: FSMContext):
     else:
         out += texts.PF_SUMMARY_NET_MINUS.format(net=abs(net))
 
-    # Bugungi chiqim + kunlik byudjet
-    today = pf_get_today_totals(me["id"], now.strftime("%Y-%m-%d"))
+    if not with_today:
+        return out
+
+    # Bugungi chiqim + kunlik byudjet — faqat joriy oy uchun
+    now = tz_now()
+    today = pf_get_today_totals(emp_id, now.strftime("%Y-%m-%d"))
     if today["expense"] > 0:
         out += texts.PF_SUMMARY_TODAY.format(today=today["expense"])
     else:
         out += texts.PF_SUMMARY_TODAY_NONE
 
-    days_in_month = calendar.monthrange(now.year, now.month)[1]
-    remaining_days = max(days_in_month - now.day, 1)
+    remaining_days = max(calendar.monthrange(year, month)[1] - now.day, 1)
     if net <= 0:
         out += texts.PF_SUMMARY_NO_LIMIT
     else:
@@ -250,11 +291,65 @@ async def pf_summary(message: Message, state: FSMContext):
             qoldiq=net, days=remaining_days,
             limit=net // remaining_days
         )
+    return out
 
-    await message.answer(out)
+
+def _pfsum_view(me, year: int, month: int):
+    """PF oy hisoboti: matn + oy navigatsiyasi."""
+    now = tz_now()
+    is_cur = (year, month) == (now.year, now.month)
+    out = _pf_summary_text(me["id"], year, month, with_today=is_cur)
+    return out or texts.PF_SUMMARY_EMPTY, kb.month_nav_kb("pfsum", year, month)
 
 
-# ─── Excel hisobot ──────────────────────────────────────────────────────────
+@router.message(F.text == texts.BTN_PF_SUMMARY)
+async def pf_summary(message: Message, state: FSMContext):
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _can_use(me):
+        await message.answer(texts.NO_PERMISSION)
+        return
+    await state.clear()
+
+    now = tz_now()
+    text, markup = _pfsum_view(me, now.year, now.month)
+    await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("pfsum:"))
+async def pf_summary_nav(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use(me):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    text, markup = _pfsum_view(me, year, month)
+    try:
+        await call.message.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest:
+        pass  # matn o'zgarmagan bo'lsa e'tiborsiz
+    await call.answer()
+
+
+# ─── Excel hisobot (joriy oy va arxiv uchun umumiy) ─────────────────────────
+
+async def _send_pf_excel(message: Message, emp, year: int, month: int) -> bool:
+    """Tanlangan oy uchun PF Excel yuboradi. Yozuv bo'lmasa False."""
+    entries = pf_get_monthly(emp["id"], year, month)
+    if not entries:
+        return False
+
+    opening = pf_balance_before(emp["id"], year, month)
+    file_bytes = await asyncio.to_thread(
+        _build_pf_excel, entries, year, month, emp["full_name"], opening
+    )
+    await message.answer_document(
+        BufferedInputFile(
+            file_bytes, filename=f"shaxsiy_moliya_{year}_{month:02d}.xlsx"
+        ),
+        caption=f"📥 Shaxsiy moliya — {texts.MONTHS_UZ[month]} {year}"
+    )
+    return True
+
 
 @router.message(F.text == texts.BTN_PF_EXCEL)
 async def pf_excel(message: Message, state: FSMContext):
@@ -265,20 +360,106 @@ async def pf_excel(message: Message, state: FSMContext):
     await state.clear()
 
     now = tz_now()
-    entries = pf_get_monthly(me["id"], now.year, now.month)
-    if not entries:
-        await message.answer(texts.PF_EXCEL_EMPTY)
+    await message.answer(
+        texts.MONTH_EXCEL_PROMPT.format(
+            month=texts.MONTHS_UZ[now.month], year=now.year
+        ),
+        reply_markup=kb.month_excel_kb("pfxl", now.year, now.month)
+    )
+
+
+@router.callback_query(F.data.startswith("pfxl:"))
+async def pf_excel_nav(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use(me):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    try:
+        await call.message.edit_text(
+            texts.MONTH_EXCEL_PROMPT.format(
+                month=texts.MONTHS_UZ[month], year=year
+            ),
+            reply_markup=kb.month_excel_kb("pfxl", year, month)
+        )
+    except TelegramBadRequest:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("pfxldl:"))
+async def pf_excel_download(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use(me):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+    year, month = nav_ym(call.data)
+    await call.answer("⏳ Tayyorlanmoqda...")
+    if not await _send_pf_excel(call.message, me, year, month):
+        await call.message.answer(texts.ARCHIVE_MONTH_EXCEL_EMPTY.format(
+            month=texts.MONTHS_UZ[month], year=year
+        ))
+
+
+# ─── Arxiv (o'tgan oylar — faqat o'qish) ────────────────────────────────────
+
+@router.message(F.text == texts.BTN_PF_ARCHIVE)
+async def pf_archive(message: Message, state: FSMContext):
+    me = get_employee_by_telegram_id(message.from_user.id)
+    if not _can_use(me):
+        await message.answer(texts.NO_PERMISSION)
+        return
+    await state.clear()
+    await message.answer(
+        texts.ARCHIVE_PICK_MONTH,
+        reply_markup=kb.archive_months_kb("pf_arc", last_months(ARCHIVE_MONTHS))
+    )
+
+
+@router.callback_query(F.data.startswith("pf_arc:"))
+async def pf_archive_month(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use(me):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
 
-    opening = pf_balance_before(me["id"], now.year, now.month)
-    file_bytes = await asyncio.to_thread(
-        _build_pf_excel, entries, now.year, now.month, me["full_name"], opening
+    raw = call.data.split(":", 1)[1]
+    if raw == "cancel":
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    ym = _parse_ym(raw)
+    if not ym:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    year, month = ym
+
+    out = _pf_summary_text(me["id"], year, month, with_today=False)
+    await call.message.edit_text(
+        out or texts.PF_SUMMARY_EMPTY,
+        reply_markup=kb.archive_excel_kb("pf_arcx", year, month)
     )
-    filename = f"shaxsiy_moliya_{now.year}_{now.month:02d}.xlsx"
-    await message.answer_document(
-        BufferedInputFile(file_bytes, filename=filename),
-        caption=f"📥 Shaxsiy moliya — {texts.MONTHS_UZ[now.month]} {now.year}"
-    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("pf_arcx:"))
+async def pf_archive_excel(call: CallbackQuery):
+    me = get_employee_by_telegram_id(call.from_user.id)
+    if not _can_use(me):
+        await call.answer(texts.NO_PERMISSION, show_alert=True)
+        return
+
+    ym = _parse_ym(call.data.split(":", 1)[1])
+    if not ym:
+        await call.answer("❌ Xato", show_alert=True)
+        return
+    year, month = ym
+
+    await call.answer("⏳ Tayyorlanmoqda...")
+    if not await _send_pf_excel(call.message, me, year, month):
+        await call.message.answer(texts.ARCHIVE_MONTH_EXCEL_EMPTY.format(
+            month=texts.MONTHS_UZ[month], year=year
+        ))
 
 
 def _build_pf_excel(entries, year: int, month: int,
@@ -486,7 +667,7 @@ async def pf_delete_start(message: Message, state: FSMContext):
 async def pf_delete_date(message: Message, state: FSMContext):
     if message.text in (texts.BTN_CANCEL, texts.BTN_BACK):
         await state.clear()
-        await message.answer(texts.CANCELLED, reply_markup=kb.pf_menu_kb())
+        await message.answer(texts.CANCELLED, reply_markup=_pf_kb(message))
         return
 
     raw = message.text.strip()
@@ -515,7 +696,7 @@ async def pf_delete_date(message: Message, state: FSMContext):
         reply_markup=kb.pf_entries_kb(entries)
     )
     await message.answer("👇 Yuqoridan tanlang yoki Bekor qiling.",
-                         reply_markup=kb.pf_menu_kb())
+                         reply_markup=_pf_kb(message))
 
 
 @router.callback_query(PersonalFinance.deleting, F.data.startswith("pf_del:"))

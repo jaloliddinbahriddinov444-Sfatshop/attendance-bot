@@ -4,10 +4,12 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton
 )
 import texts
+import tzutil
 from database import (
     get_finance_categories, get_finance_personal_categories,
     finance_category_label,
     get_pf_categories, pf_category_label,
+    get_menu_layout,
 )
 
 
@@ -15,40 +17,301 @@ def remove_kb():
     return ReplyKeyboardRemove()
 
 
-def main_menu_kb(is_admin: bool = False, is_boss: bool = False,
-                 is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
-    # Bosh Admin uchun: to'g'ridan-to'g'ri Moliya bo'limi + Admin panel
-    if is_bosh_admin:
-        return ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
-                [KeyboardButton(text=texts.BTN_ATTENDANCE)],
-                [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
-                [KeyboardButton(text=texts.BTN_TASKS), KeyboardButton(text=texts.BTN_SALARY)],
-                [KeyboardButton(text=texts.BTN_ADMIN)],
-            ],
-            resize_keyboard=True,
-        )
+# ===== Menyu reyestri =====
+# Bosh Admin bot ichidan tahrirlay oladigan reply-menyular.
+# "buttons" — kalit -> texts.py tugma matni (matnlar handler filtrlariga
+# bog'langan, ular O'ZGARMAYDI — faqat joylashuv o'zgaradi).
+# "default" — hozirgi kod tartibi AYNAN; bazada yozuv bo'lmasa shu ishlatiladi.
+MAX_ROW_BUTTONS = 2  # Telegram'da 3+ tugma matni qisqarib ketadi
 
-    # Boss uchun asosiy menyu
-    if is_boss:
-        return ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text=texts.BTN_BOSS_ATTENDANCE)],
-                [KeyboardButton(text=texts.BTN_ADMIN_TASKS),
-                 KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
-            ],
-            resize_keyboard=True,
-        )
+MENU_REGISTRY = {
+    "main_employee": {
+        "title": "🏠 Asosiy menyu — xodim",
+        "buttons": {
+            "attendance": texts.BTN_ATTENDANCE,
+            "profile": texts.BTN_PROFILE,
+            "stats": texts.BTN_STATS,
+            "tasks": texts.BTN_TASKS,
+            "salary": texts.BTN_SALARY,
+            "personal_finance": texts.BTN_PERSONAL_FINANCE,
+            "admin": texts.BTN_ADMIN,
+        },
+        "default": [["attendance"], ["profile", "stats"], ["tasks", "salary"],
+                    ["personal_finance"], ["admin"]],
+        "targets": {"personal_finance": "pf_menu", "admin": "admin_panel"},
+        "conditional": {"admin", "personal_finance"},
+    },
+    "main_boss": {
+        "title": "🏠 Asosiy menyu — Boss",
+        "buttons": {
+            "boss_attendance": texts.BTN_BOSS_ATTENDANCE,
+            "admin_tasks": texts.BTN_ADMIN_TASKS,
+            "boss_finance": texts.BTN_BOSS_FINANCE,
+        },
+        "default": [["boss_attendance"], ["admin_tasks", "boss_finance"]],
+        "targets": {"boss_finance": "finance_menu"},
+    },
+    "main_bosh_admin": {
+        "title": "🏠 Asosiy menyu — Bosh Admin",
+        "buttons": {
+            "boss_finance": texts.BTN_BOSS_FINANCE,
+            "attendance": texts.BTN_ATTENDANCE,
+            "profile": texts.BTN_PROFILE,
+            "stats": texts.BTN_STATS,
+            "tasks": texts.BTN_TASKS,
+            "salary": texts.BTN_SALARY,
+            "admin": texts.BTN_ADMIN,
+        },
+        "default": [["boss_finance"], ["attendance"], ["profile", "stats"],
+                    ["tasks", "salary"], ["admin"]],
+        "targets": {"boss_finance": "finance_menu", "admin": "admin_panel_bosh"},
+    },
+    "admin_panel_bosh": {
+        "title": "⚙️ Admin panel — Bosh Admin",
+        "buttons": {
+            "grp_employees": texts.BTN_GRP_EMPLOYEES,
+            "grp_attendance": texts.BTN_GRP_ATTENDANCE,
+            "admin_tasks": texts.BTN_ADMIN_TASKS,
+            "grp_control": texts.BTN_GRP_CONTROL,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["grp_employees", "grp_attendance"], ["admin_tasks"],
+                    ["grp_control"], ["back"]],
+        "targets": {"grp_employees": "grp_employees", "grp_attendance": "grp_attendance",
+                    "grp_control": "grp_control", "back": "back"},
+    },
+    "admin_panel": {
+        "title": "⚙️ Admin panel — oddiy admin",
+        "buttons": {
+            "admin_add_employee": texts.BTN_ADMIN_ADD_EMPLOYEE,
+            "admin_list": texts.BTN_ADMIN_LIST,
+            "admin_today": texts.BTN_ADMIN_TODAY,
+            "admin_att_edit": texts.BTN_ADMIN_ATT_EDIT,
+            "admin_rates": texts.BTN_ADMIN_RATES,
+            "fix_requests": texts.BTN_FIX_REQUESTS_ADMIN,
+            "admin_salary": texts.BTN_ADMIN_SALARY,
+            "admin_tasks": texts.BTN_ADMIN_TASKS,
+            "admin_export": texts.BTN_ADMIN_EXPORT,
+            "admin_emp_excel": texts.BTN_ADMIN_EMP_EXCEL,
+            "admin_remove": texts.BTN_ADMIN_REMOVE,
+            "admin_promote": texts.BTN_ADMIN_PROMOTE,
+            "admin_settings": texts.BTN_ADMIN_SETTINGS,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["admin_add_employee"], ["admin_list", "admin_today"],
+                    ["admin_att_edit", "admin_rates"], ["fix_requests"],
+                    ["admin_salary", "admin_tasks"],
+                    ["admin_export", "admin_emp_excel"],
+                    ["admin_remove", "admin_promote"], ["admin_settings"],
+                    ["back"]],
+        "targets": {"admin_settings": "admin_settings", "back": "back"},
+    },
+    "grp_employees": {
+        "title": "👥 Bo'lim — Xodimlar",
+        "buttons": {
+            "admin_list": texts.BTN_ADMIN_LIST,
+            "admin_emp_excel": texts.BTN_ADMIN_EMP_EXCEL,
+            "admin_add_employee": texts.BTN_ADMIN_ADD_EMPLOYEE,
+            "admin_remove": texts.BTN_ADMIN_REMOVE,
+            "set_position": texts.BTN_SET_POSITION,
+            "admin_salary": texts.BTN_ADMIN_SALARY,
+            "admin_back": texts.BTN_ADMIN_BACK,
+        },
+        "default": [["admin_list", "admin_emp_excel"],
+                    ["admin_add_employee", "admin_remove"],
+                    ["set_position", "admin_salary"], ["admin_back"]],
+        "targets": {"admin_back": "back"},
+    },
+    "grp_attendance": {
+        "title": "🕒 Bo'lim — Davomat",
+        "buttons": {
+            "admin_today": texts.BTN_ADMIN_TODAY,
+            "admin_att_edit": texts.BTN_ADMIN_ATT_EDIT,
+            "fix_requests": texts.BTN_FIX_REQUESTS_ADMIN,
+            "admin_back": texts.BTN_ADMIN_BACK,
+        },
+        "default": [["admin_today"], ["admin_att_edit"], ["fix_requests"],
+                    ["admin_back"]],
+        "targets": {"admin_back": "back"},
+    },
+    "grp_finance": {
+        "title": "💵 Bo'lim — Ish haqi",
+        "buttons": {
+            "admin_salary": texts.BTN_ADMIN_SALARY,
+            "admin_back": texts.BTN_ADMIN_BACK,
+        },
+        "default": [["admin_salary"], ["admin_back"]],
+        "targets": {"admin_back": "back"},
+    },
+    "grp_control": {
+        "title": "🎛 Bo'lim — Boshqaruv",
+        "buttons": {
+            "admin_settings": texts.BTN_ADMIN_SETTINGS,
+            "web_dashboard": texts.BTN_WEB_DASHBOARD,
+            "reminders": texts.BTN_REMINDERS,
+            "office_ip": texts.BTN_OFFICE_IP,
+            "positions": texts.BTN_POSITIONS,
+            "finance_categories": texts.BTN_FINANCE_CATEGORIES,
+            "admin_promote": texts.BTN_ADMIN_PROMOTE,
+            "admin_boss_assign": texts.BTN_ADMIN_BOSS_ASSIGN,
+            "admin_pf_access": texts.BTN_ADMIN_PF_ACCESS,
+            "menu_layout": texts.BTN_MENU_LAYOUT,
+            "broadcast": texts.BTN_BROADCAST,
+            "admin_back": texts.BTN_ADMIN_BACK,
+        },
+        "default": [["admin_settings"], ["web_dashboard", "reminders"],
+                    ["office_ip"], ["positions", "finance_categories"],
+                    ["admin_promote", "admin_boss_assign"],
+                    ["admin_pf_access"], ["menu_layout"], ["broadcast"],
+                    ["admin_back"]],
+        "targets": {"admin_settings": "admin_settings", "office_ip": "ip_menu",
+                    "admin_back": "back"},
+    },
+    "admin_settings": {
+        "title": "🔧 Sozlamalar",
+        "buttons": {
+            "set_hours": texts.BTN_SET_HOURS,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["set_hours"], ["back"]],
+        "targets": {"back": "back"},
+    },
+    "ip_menu": {
+        "title": "📡 Ofis IP boshqaruvi",
+        "buttons": {
+            "office_ip_add": texts.BTN_OFFICE_IP_ADD,
+            "office_ip_list": texts.BTN_OFFICE_IP_LIST,
+            "office_beacon": texts.BTN_OFFICE_BEACON,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["office_ip_add"], ["office_ip_list"], ["office_beacon"],
+                    ["back"]],
+        "targets": {"back": "back"},
+    },
+    "boss_panel": {
+        "title": "🏆 Boss panel",
+        "buttons": {
+            "boss_attendance": texts.BTN_BOSS_ATTENDANCE,
+            "admin_tasks": texts.BTN_ADMIN_TASKS,
+            "boss_finance": texts.BTN_BOSS_FINANCE,
+            "broadcast": texts.BTN_BROADCAST,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["boss_attendance"], ["admin_tasks", "boss_finance"],
+                    ["broadcast"], ["back"]],
+        "targets": {"boss_finance": "finance_menu", "back": "back"},
+    },
+    "finance_menu": {
+        "title": "💰 Moliya bo'limi",
+        "buttons": {
+            "income": texts.BTN_FINANCE_INCOME,
+            "expense": texts.BTN_FINANCE_EXPENSE,
+            "summary": texts.BTN_FINANCE_SUMMARY,
+            "excel": texts.BTN_FINANCE_EXCEL,
+            "delete": texts.BTN_FINANCE_DELETE,
+            "archive": texts.BTN_FINANCE_ARCHIVE,
+            "categories": texts.BTN_FINANCE_CATEGORIES,
+            "personal_finance": texts.BTN_PERSONAL_FINANCE,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["income", "expense"], ["summary", "excel"], ["delete"],
+                    ["archive"], ["categories"], ["personal_finance"],
+                    ["back"]],
+        "targets": {"personal_finance": "pf_menu", "back": "back"},
+    },
+    "pf_menu": {
+        "title": "📊 Shaxsiy xarajatlarim",
+        "buttons": {
+            "income": texts.BTN_PF_INCOME,
+            "expense": texts.BTN_PF_EXPENSE,
+            "summary": texts.BTN_PF_SUMMARY,
+            "excel": texts.BTN_PF_EXCEL,
+            "delete": texts.BTN_PF_DELETE,
+            "archive": texts.BTN_PF_ARCHIVE,
+            "categories": texts.BTN_PF_CATEGORIES,
+            "back": texts.BTN_BACK,
+        },
+        "default": [["income", "expense"], ["summary", "excel"], ["delete"],
+                    ["archive"], ["categories"], ["back"]],
+        "targets": {"back": "back"},
+    },
+}
 
-    rows = [
-        [KeyboardButton(text=texts.BTN_ATTENDANCE)],
-        [KeyboardButton(text=texts.BTN_PROFILE), KeyboardButton(text=texts.BTN_STATS)],
-        [KeyboardButton(text=texts.BTN_TASKS), KeyboardButton(text=texts.BTN_SALARY)],
-    ]
-    if is_admin:
-        rows.append([KeyboardButton(text=texts.BTN_ADMIN)])
+
+def normalize_layout(menu_key: str, layout=None):
+    """Joylashuvni xavfsiz holatga keltiradi.
+
+    - reyestrda yo'q yoki takrorlangan kalitlar tashlanadi;
+    - bir qatorda ko'pi bilan MAX_ROW_BUTTONS ta tugma;
+    - bo'sh qatorlar chiqariladi;
+    - reyestrda bor, lekin joylashuvda yo'q tugmalar OXIRIGA qo'shiladi
+      (kodga yangi tugma qo'shilganda yo'qolib qolmasligi uchun).
+    """
+    reg = MENU_REGISTRY[menu_key]
+    known = reg["buttons"]
+    rows, seen = [], set()
+    for row in (layout if layout is not None else reg["default"]):
+        cur = []
+        for key in row:
+            if key not in known or key in seen:
+                continue
+            seen.add(key)
+            cur.append(key)
+            if len(cur) == MAX_ROW_BUTTONS:
+                rows.append(cur)
+                cur = []
+        if cur:
+            rows.append(cur)
+    for key in known:
+        if key not in seen:
+            rows.append([key])
+    return rows
+
+
+def get_layout(menu_key: str):
+    """Bazadagi (yoki standart) joylashuv — har doim normallashtirilgan."""
+    return normalize_layout(menu_key, get_menu_layout(menu_key))
+
+
+def build_menu_kb(menu_key: str, visible_keys=None,
+                  overrides=None) -> ReplyKeyboardMarkup:
+    """Reyestr + saqlangan joylashuv asosida reply-klaviatura quradi.
+
+    visible_keys — berilsa, faqat shu kalitlar chiqadi (shartli tugmalar:
+                   admin, personal_finance va h.k.). Bo'sh qolgan qator tushadi.
+    overrides    — {kalit: matn}, tugma matnini almashtirish (pf_menu'dagi
+                   ortga tugmasi kirish nuqtasiga qarab o'zgaradi).
+    """
+    buttons = MENU_REGISTRY[menu_key]["buttons"]
+    rows = []
+    for row in get_layout(menu_key):
+        keys = [k for k in row if visible_keys is None or k in visible_keys]
+        if not keys:
+            continue
+        rows.append([
+            KeyboardButton(text=(overrides or {}).get(k, buttons[k]))
+            for k in keys
+        ])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+def main_menu_kb(is_admin: bool = False, is_boss: bool = False,
+                 is_bosh_admin: bool = False,
+                 has_pf: bool = False) -> ReplyKeyboardMarkup:
+    # has_pf — faqat oddiy xodim menyusiga ta'sir qiladi; Boss va Bosh Admin
+    # uchun "Shaxsiy xarajatlarim" Moliya bo'limi ichida turadi.
+    if is_bosh_admin:
+        return build_menu_kb("main_bosh_admin")
+    if is_boss:
+        return build_menu_kb("main_boss")
+
+    # Oddiy xodim — shartli tugmalar joylashuvdan qat'i nazar filtrlanadi
+    visible = {"attendance", "profile", "stats", "tasks", "salary"}
+    if has_pf:
+        visible.add("personal_finance")
+    if is_admin:
+        visible.add("admin")
+    return build_menu_kb("main_employee", visible_keys=visible)
 
 
 def cancel_kb() -> ReplyKeyboardMarkup:
@@ -102,115 +365,36 @@ def admin_menu_kb(is_bosh_admin: bool = False) -> ReplyKeyboardMarkup:
     # Bosh Admin uchun — tugmalar bo'limlarga yig'ilgan (qisqa, tartibli panel).
     # Har bo'lim alohida submenyu ochadi (grp_*_kb).
     if is_bosh_admin:
-        return ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text=texts.BTN_GRP_EMPLOYEES),
-                 KeyboardButton(text=texts.BTN_GRP_ATTENDANCE)],
-                [KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
-                [KeyboardButton(text=texts.BTN_GRP_CONTROL)],
-                [KeyboardButton(text=texts.BTN_BACK)],
-            ],
-            resize_keyboard=True,
-        )
-
-    # Oddiy admin uchun — eski tekis menyu (o'zgarmaydi).
-    rows = [
-        [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE)],
-        [KeyboardButton(text=texts.BTN_ADMIN_LIST),
-         KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
-        [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT),
-         KeyboardButton(text=texts.BTN_ADMIN_RATES)],
-        [KeyboardButton(text=texts.BTN_FIX_REQUESTS_ADMIN)],
-        [KeyboardButton(text=texts.BTN_ADMIN_SALARY),
-         KeyboardButton(text=texts.BTN_ADMIN_TASKS)],
-        [KeyboardButton(text=texts.BTN_ADMIN_EXPORT),
-         KeyboardButton(text=texts.BTN_ADMIN_EMP_EXCEL)],
-        [KeyboardButton(text=texts.BTN_ADMIN_REMOVE),
-         KeyboardButton(text=texts.BTN_ADMIN_PROMOTE)],
-        [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
-        [KeyboardButton(text=texts.BTN_BACK)],
-    ]
-    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+        return build_menu_kb("admin_panel_bosh")
+    # Oddiy admin uchun — eski tekis menyu.
+    return build_menu_kb("admin_panel")
 
 
 # ===== Bosh Admin: bo'lim submenyulari =====
 
 def grp_employees_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_LIST),
-             KeyboardButton(text=texts.BTN_ADMIN_EMP_EXCEL)],
-            [KeyboardButton(text=texts.BTN_ADMIN_ADD_EMPLOYEE),
-             KeyboardButton(text=texts.BTN_ADMIN_REMOVE)],
-            [KeyboardButton(text=texts.BTN_SET_POSITION),
-             KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
-            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
-        ],
-        resize_keyboard=True,
-    )
+    return build_menu_kb("grp_employees")
 
 
 def grp_attendance_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_TODAY)],
-            [KeyboardButton(text=texts.BTN_ADMIN_ATT_EDIT)],
-            [KeyboardButton(text=texts.BTN_FIX_REQUESTS_ADMIN)],
-            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
-        ],
-        resize_keyboard=True,
-    )
+    return build_menu_kb("grp_attendance")
 
 
 def grp_finance_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_SALARY)],
-            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
-        ],
-        resize_keyboard=True,
-    )
+    return build_menu_kb("grp_finance")
 
 
 def grp_control_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_ADMIN_SETTINGS)],
-            [KeyboardButton(text=texts.BTN_WEB_DASHBOARD),
-             KeyboardButton(text=texts.BTN_REMINDERS)],
-            [KeyboardButton(text=texts.BTN_OFFICE_IP)],
-            [KeyboardButton(text=texts.BTN_POSITIONS),
-             KeyboardButton(text=texts.BTN_FINANCE_CATEGORIES)],
-            [KeyboardButton(text=texts.BTN_ADMIN_PROMOTE),
-             KeyboardButton(text=texts.BTN_ADMIN_BOSS_ASSIGN)],
-            [KeyboardButton(text=texts.BTN_BROADCAST)],
-            [KeyboardButton(text=texts.BTN_ADMIN_BACK)],
-        ],
-        resize_keyboard=True,
-    )
+    return build_menu_kb("grp_control")
 
 
 def ip_menu_kb() -> ReplyKeyboardMarkup:
     """Ofis IP boshqaruvi submenyusi (Bosh Admin)."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_OFFICE_IP_ADD)],
-            [KeyboardButton(text=texts.BTN_OFFICE_IP_LIST)],
-            [KeyboardButton(text=texts.BTN_OFFICE_BEACON)],
-            [KeyboardButton(text=texts.BTN_BACK)],
-        ],
-        resize_keyboard=True,
-    )
+    return build_menu_kb("ip_menu")
 
 
 def admin_settings_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_SET_HOURS)],
-            [KeyboardButton(text=texts.BTN_BACK)],
-        ],
-        resize_keyboard=True
-    )
+    return build_menu_kb("admin_settings")
 
 
 # ===== Inline klaviaturalar =====
@@ -249,16 +433,20 @@ def salary_admin_menu_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def month_close_confirm_kb() -> InlineKeyboardMarkup:
+def month_close_confirm_kb(year: int, month: int) -> InlineKeyboardMarkup:
+    """Tanlangan oyni yopish tasdig'i — oy callback ichida olib yuriladi."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Ha, yopish", callback_data="sal_cm_yes"),
+        [InlineKeyboardButton(text="✅ Ha, yopish",
+                              callback_data=f"sal_cm_yes:{year}:{month}"),
          InlineKeyboardButton(text="❌ Yo'q", callback_data="sal_cm_no")],
     ])
 
 
-def month_reopen_confirm_kb() -> InlineKeyboardMarkup:
+def month_reopen_confirm_kb(year: int, month: int) -> InlineKeyboardMarkup:
+    """Tanlangan oyni qayta ochish tasdig'i."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔓 Ha, qayta ochish", callback_data="sal_cm_reopen"),
+        [InlineKeyboardButton(text="🔓 Ha, qayta ochish",
+                              callback_data=f"sal_cm_reopen:{year}:{month}"),
          InlineKeyboardButton(text="❌ Yo'q", callback_data="sal_cm_no")],
     ])
 
@@ -308,6 +496,67 @@ def salary_confirm_kb() -> InlineKeyboardMarkup:
     ])
 
 
+# ===== Smena normasini o'zgartirish =====
+
+def emp_card_actions_kb(emp_id: int, show_shift_norm: bool = False,
+                        back_callback: str = None) -> InlineKeyboardMarkup:
+    """Xodim kartochkasi amallari — Boss paneli va Xodimlar bo'limida bir xil ishlatiladi."""
+    rows = [
+        [InlineKeyboardButton(text="📥 Hodim ma'lumotlari excel hisoboti",
+                              callback_data=f"empdata_excel:{emp_id}")],
+        [InlineKeyboardButton(text=texts.BTN_EMP_RATE_CHANGE,
+                              callback_data=f"empdata_rate:{emp_id}")],
+    ]
+    # Ish vaqti normasi — faqat Boss/Bosh Admin uchun
+    if show_shift_norm:
+        rows.append([InlineKeyboardButton(text=texts.BTN_SHIFT_NORM,
+                                          callback_data=f"empdata_shnorm:{emp_id}")])
+    if back_callback:
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=back_callback)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def shift_norm_scope_kb(emp_name: str, pos_name: str = None) -> InlineKeyboardMarkup:
+    """Qamrov tanlash: faqat shu xodim yoki butun lavozim (lavozim bo'lsa)."""
+    rows = [[InlineKeyboardButton(
+        text=texts.BTN_SHIFT_NORM_EMPLOYEE.format(name=emp_name),
+        callback_data="shnorm_scope:employee"
+    )]]
+    if pos_name:
+        rows.append([InlineKeyboardButton(
+            text=texts.BTN_SHIFT_NORM_POSITION.format(position=pos_name),
+            callback_data="shnorm_scope:position"
+        )])
+    rows.append([InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="shnorm_scope:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def shift_norm_month_kb(current_month: str) -> InlineKeyboardMarkup:
+    """Amal qilish oyi: joriy oyni tezkor tanlash yoki matn bilan boshqa oy kiritish."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=texts.BTN_SHIFT_NORM_CURRENT_MONTH.format(current_month=current_month),
+            callback_data=f"shnorm_month:{current_month}"
+        )],
+        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="shnorm_month:cancel")],
+    ])
+
+
+def shift_norm_reason_kb() -> InlineKeyboardMarkup:
+    """Sabab kiritish — ixtiyoriy, o'tkazib yuborish mumkin."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=texts.BTN_SHIFT_NORM_SKIP_REASON, callback_data="shnorm_reason:skip")],
+        [InlineKeyboardButton(text=texts.BTN_CANCEL, callback_data="shnorm_reason:cancel")],
+    ])
+
+
+def shift_norm_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="shnorm_confirm:yes"),
+         InlineKeyboardButton(text="❌ Bekor qilish", callback_data="shnorm_confirm:no")],
+    ])
+
+
 # ===== Vazifalar (Phase 2) =====
 
 def task_complete_kb(task_id: int) -> InlineKeyboardMarkup:
@@ -352,16 +601,7 @@ def checkout_tasks_yes_no_kb() -> InlineKeyboardMarkup:
 
 def boss_panel_kb() -> ReplyKeyboardMarkup:
     """Boss bo'lim menyusi."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_BOSS_ATTENDANCE)],
-            [KeyboardButton(text=texts.BTN_ADMIN_TASKS),
-             KeyboardButton(text=texts.BTN_BOSS_FINANCE)],
-            [KeyboardButton(text=texts.BTN_BROADCAST)],
-            [KeyboardButton(text=texts.BTN_BACK)],
-        ],
-        resize_keyboard=True
-    )
+    return build_menu_kb("boss_panel")
 
 
 def assign_boss_confirm_kb(emp_id: int) -> InlineKeyboardMarkup:
@@ -387,34 +627,134 @@ def remove_boss_confirm_kb() -> InlineKeyboardMarkup:
 # ===== Moliya bo'limi (Phase 4) =====
 
 def finance_menu_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=texts.BTN_FINANCE_INCOME),
-             KeyboardButton(text=texts.BTN_FINANCE_EXPENSE)],
-            [KeyboardButton(text=texts.BTN_FINANCE_SUMMARY),
-             KeyboardButton(text=texts.BTN_FINANCE_EXCEL)],
-            [KeyboardButton(text=texts.BTN_FINANCE_DELETE)],
-            [KeyboardButton(text=texts.BTN_FINANCE_CATEGORIES)],
-            [KeyboardButton(text=texts.BTN_PERSONAL_FINANCE)],
-            [KeyboardButton(text=texts.BTN_BACK)],
-        ],
-        resize_keyboard=True
-    )
+    return build_menu_kb("finance_menu")
 
 
-def pf_menu_kb() -> ReplyKeyboardMarkup:
-    """Shaxsiy moliya menyusi."""
+def pf_menu_kb(from_finance: bool = False) -> ReplyKeyboardMarkup:
+    """Shaxsiy moliya menyusi.
+
+    from_finance — Moliya bo'limi orqali kirilgan (Boss/Bosh Admin): ortga
+    tugmasi Moliya menyusiga qaytaradi. Aks holda oddiy BTN_BACK — asosiy menyu.
+    """
+    overrides = {"back": texts.BTN_PF_BACK_FINANCE} if from_finance else None
+    return build_menu_kb("pf_menu", overrides=overrides)
+
+
+# ===== Universal oy navigatsiyasi (◀️ ▶️) =====
+
+def month_nav_kb(prefix: str, year: int, month: int,
+                 extra_rows: list | None = None) -> InlineKeyboardMarkup:
+    """Universal oy navigatsiyasi: pastida oldingi/keyingi oy tugmalari.
+
+    Qoidalar:
+      - Orqaga maksimal tzutil.NAV_BACK (6) oy (joriy oydan hisoblaganda)
+      - Oldinga joriy oydan oshib bo'lmaydi (kelajak oy tugmasi chiqmaydi)
+      - Callback formati: {prefix}:{year}:{month}
+      - extra_rows — ekranga xos qo'shimcha tugma qatorlari (masalan Excel tugmasi)
+    """
+    d = tzutil.now()
+    cur = d.year * 12 + d.month - 1
+    rows = list(extra_rows) if extra_rows else []
+    nav = []
+    py, pm = tzutil.prev_month(year, month)
+    if py * 12 + pm - 1 >= cur - tzutil.NAV_BACK:
+        nav.append(InlineKeyboardButton(
+            text=f"◀️ {texts.MONTHS_UZ[pm]}",
+            callback_data=f"{prefix}:{py}:{pm}"
+        ))
+    ny, nm = tzutil.next_month(year, month)
+    if ny * 12 + nm - 1 <= cur:
+        nav.append(InlineKeyboardButton(
+            text=f"{texts.MONTHS_UZ[nm]} ▶️",
+            callback_data=f"{prefix}:{ny}:{nm}"
+        ))
+    if nav:
+        rows.append(nav)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def month_excel_kb(prefix: str, year: int, month: int) -> InlineKeyboardMarkup:
+    """Excel ekrani: «Yuklab olish» tugmasi + oy navigatsiyasi.
+
+    Yuklab olish callbacki: {prefix}dl:{year}:{month}
+    """
+    return month_nav_kb(prefix, year, month, extra_rows=[[InlineKeyboardButton(
+        text=texts.BTN_MONTH_EXCEL_DL,
+        callback_data=f"{prefix}dl:{year}:{month}"
+    )]])
+
+
+def month_close_pick_kb(months) -> InlineKeyboardMarkup:
+    """Oy yopish uchun oy tanlash. months — [(yil, oy, yopiqmi), ...]."""
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{'🔒 ' if closed else ''}{texts.MONTHS_UZ[m]} {y}",
+            callback_data=f"mclose:{y}:{m}"
+        )]
+        for y, m, closed in months
+    ]
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="sal_cm_no"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ===== Arxiv (o'tgan oylar) =====
+
+def archive_months_kb(prefix: str, months) -> InlineKeyboardMarkup:
+    """Oxirgi oylar ro'yxati. prefix — 'pf_arc' yoki 'fin_arc'."""
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{texts.MONTHS_UZ[m]} {y}",
+            callback_data=f"{prefix}:{y}-{m:02d}"
+        )]
+        for y, m in months
+    ]
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data=f"{prefix}:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def archive_excel_kb(prefix: str, year: int, month: int) -> InlineKeyboardMarkup:
+    """Tanlangan oy uchun Excel tugmasi. prefix — 'pf_arcx' yoki 'fin_arcx'."""
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text=texts.BTN_ARCHIVE_EXCEL,
+        callback_data=f"{prefix}:{year}-{month:02d}"
+    )]])
+
+
+def pf_access_kb(employees) -> InlineKeyboardMarkup:
+    """Xodimlar ro'yxati — PF huquqi holati bilan (toggle)."""
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{'✅' if e['pf_access'] else '⬜'} {e['full_name']}",
+            callback_data=f"pfacc:{e['id']}"
+        )]
+        for e in employees
+    ]
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data="pfacc:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def menu_editor_webapp_kb(public_url: str) -> ReplyKeyboardMarkup:
+    """Mini App muharririni ochuvchi klaviatura (barcha menyular bitta sahifada).
+
+    ATAYIN KeyboardButton(web_app=...) — inline emas: saqlash
+    Telegram.WebApp.sendData orqali ishlaydi, u faqat shu rejimda mavjud.
+    """
+    from aiogram.types import WebAppInfo
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=texts.BTN_PF_INCOME),
-             KeyboardButton(text=texts.BTN_PF_EXPENSE)],
-            [KeyboardButton(text=texts.BTN_PF_SUMMARY),
-             KeyboardButton(text=texts.BTN_PF_EXCEL)],
-            [KeyboardButton(text=texts.BTN_PF_DELETE)],
-            [KeyboardButton(text=texts.BTN_PF_CATEGORIES)],
-            [KeyboardButton(text=texts.BTN_BACK)],
+            [KeyboardButton(
+                text=texts.BTN_MENU_EDITOR_OPEN,
+                web_app=WebAppInfo(url=f"{public_url}/dashboard/menu-editor")
+            )],
+            [KeyboardButton(text=texts.BTN_CANCEL)],
         ],
-        resize_keyboard=True
+        resize_keyboard=True,
     )
 
 
