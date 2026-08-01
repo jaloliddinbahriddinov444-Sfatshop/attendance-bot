@@ -266,6 +266,12 @@ def init_db():
                 "ALTER TABLE finance_entries ADD COLUMN linked_employee_id INTEGER"
             )
 
+        # Migratsiya: salary_entries.for_ym — yozuv qaysi oyga tegishli ("YYYY-MM").
+        # Bo'sh (eski yozuvlar) bo'lsa created_at oyidan hisoblanadi.
+        se_cols = [row[1] for row in conn.execute("PRAGMA table_info(salary_entries)").fetchall()]
+        if "for_ym" not in se_cols:
+            conn.execute("ALTER TABLE salary_entries ADD COLUMN for_ym TEXT")
+
     # Lavozimlar tizimini yaratish
     init_positions()
 
@@ -1164,12 +1170,11 @@ def get_salary_totals_by_type(employee_id: int, year: int, month: int) -> dict:
             SELECT entry_type, SUM(amount) as total
             FROM salary_entries
             WHERE employee_id = ?
-              AND strftime('%Y', created_at, '+5 hours') = ?
-              AND strftime('%m', created_at, '+5 hours') = ?
+              AND COALESCE(for_ym, strftime('%Y-%m', created_at, '+5 hours')) = ?
               AND cancelled = 0
             GROUP BY entry_type
             """,
-            (employee_id, str(year), f"{month:02d}")
+            (employee_id, f"{year:04d}-{month:02d}")
         ).fetchall()
     totals = {"avans": 0, "jarima": 0, "mukofot": 0, "bonus": 0, "mahsulot": 0}
     for row in rows:
@@ -1178,13 +1183,17 @@ def get_salary_totals_by_type(employee_id: int, year: int, month: int) -> dict:
     return totals
 
 
-def add_salary_entry(employee_id: int, entry_type: str, amount: int, reason: str, created_by: int) -> int:
-    """Yangi ish haqqi yozuvini qo'shish. ID qaytaradi."""
+def add_salary_entry(employee_id: int, entry_type: str, amount: int, reason: str,
+                     created_by: int, for_ym: str | None = None) -> int:
+    """Yangi ish haqqi yozuvini qo'shish. ID qaytaradi.
+
+    for_ym — yozuv qaysi oyga tegishli ("YYYY-MM"); None bo'lsa created_at oyi.
+    """
     with get_db() as conn:
         cursor = conn.execute(
-            "INSERT INTO salary_entries (employee_id, entry_type, amount, reason, created_by) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (employee_id, entry_type, amount, reason, created_by)
+            "INSERT INTO salary_entries (employee_id, entry_type, amount, reason, created_by, for_ym) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (employee_id, entry_type, amount, reason, created_by, for_ym)
         )
         return cursor.lastrowid
 
@@ -1208,13 +1217,13 @@ def get_salary_entry(entry_id: int):
 
 
 def get_active_salary_entries(employee_id: int, year: int, month: int):
-    """Joriy oyning faol (bekor qilinmagan) yozuvlari"""
+    """Berilgan oyning faol (bekor qilinmagan) yozuvlari — for_ym yoki created_at oyi bo'yicha"""
     with get_db() as conn:
         return conn.execute(
             "SELECT * FROM salary_entries WHERE employee_id = ? "
-            "AND strftime('%Y', created_at, '+5 hours') = ? AND strftime('%m', created_at, '+5 hours') = ? "
+            "AND COALESCE(for_ym, strftime('%Y-%m', created_at, '+5 hours')) = ? "
             "AND cancelled = 0 ORDER BY created_at DESC",
-            (employee_id, str(year), f"{month:02d}")
+            (employee_id, f"{year:04d}-{month:02d}")
         ).fetchall()
 
 

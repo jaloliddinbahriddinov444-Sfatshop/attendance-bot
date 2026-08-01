@@ -455,3 +455,20 @@ chiqdi (md5 solishtiruv: server allaqachon deyarli sinxron edi, faqat nav
 fayllari va `requirements.txt` (numpy 2.2.6 — venv'dagi haqiqiy versiyaga
 moslandi) yangilandi). GitHub bilan ham sinxron (merge c080759).
 Eslatma: serverda git repo YO'Q — deploy tar orqali.
+
+### 2026-08-01 (2) — Ish haqqi yozuvida oy tanlash (for_ym) + eski oy yozuvini bekor qilish
+
+Muammo: bonus/avans/jarima doim `created_at` oyiga tushardi — yangi oy
+boshlangach o'tgan oy uchun bonus yozib bo'lmasdi (Excel/hisobotlarga chiqmasdi),
+bekor qilish ham faqat joriy oy yozuvlarini ko'rsatardi.
+
+Yechim: `salary_entries.for_ym TEXT` ustuni (migratsiya init_db da; eski
+yozuvlar NULL → created_at oyidan hisoblanadi). `add_salary_entry(for_ym=...)`.
+Oy filtrlari `COALESCE(for_ym, strftime('%Y-%m', created_at, '+5 hours'))`.
+Qo'shish oqimi: xodim → tur → **oy (oxirgi 3 oy, yopiqlari 🔒 alert)** → summa
+→ sabab. Bekor qilish: xodim → **oy** → yozuvlar. Yopiq oyga yozish/bekor
+qilish barcha nuqtalarda bloklanadi (saqlash oldidan qayta tekshiriladi).
+Audit qatorida boshqa oyga tegishli yozuvga "Tegishli oy: ..." qo'shiladi.
+SALARY_ADD_SAVED / NOTIFY_SALARY_ADDED endi oyni ko'rsatadi (moliya avans
+bildirishnomasi ham moslandi). Prefikslar: `sal_month:`, `sal_cancmon:`.
+Test: `test_month_nav.py` ga for_ym stsenariylari qo'shildi.

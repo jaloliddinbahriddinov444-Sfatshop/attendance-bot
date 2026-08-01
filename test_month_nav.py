@@ -65,6 +65,41 @@ def main():
     assert btns[0].callback_data == "mclose:2026:8" and "🔒" not in btns[0].text
     assert btns[1].callback_data == "mclose:2026:7" and btns[1].text.startswith("🔒")
 
+    # ─ salary_month_pick_kb: prefiks va bekor tugmasi ─
+    btns = flat(kb.salary_month_pick_kb("sal_month", months))
+    assert btns[0].callback_data == "sal_month:2026:8"
+    assert btns[-1].callback_data == "sal_month:cancel"
+
+    # ─ for_ym: yozuv tanlangan oyga tushishi ─
+    import database as db
+    db.init_db()
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO employees (telegram_id, full_name, phone, position, face_encoding) "
+            "VALUES (1001, 'Test Xodim', '+998', 'X', x'00')"
+        )
+        emp_id = conn.execute(
+            "SELECT id FROM employees WHERE telegram_id=1001"
+        ).fetchone()["id"]
+
+    py, pm = tz.prev_month(y, m)
+    db.add_salary_entry(emp_id, "bonus", 50000, "o'tgan oy bonusi", 0,
+                        for_ym=f"{py:04d}-{pm:02d}")
+    db.add_salary_entry(emp_id, "jarima", 20000, "joriy jarima", 0)  # for_ym yo'q
+
+    prev_tot = db.get_salary_totals_by_type(emp_id, py, pm)
+    cur_tot = db.get_salary_totals_by_type(emp_id, y, m)
+    assert prev_tot["bonus"] == 50000 and prev_tot["jarima"] == 0
+    assert cur_tot["jarima"] == 20000 and cur_tot["bonus"] == 0
+    assert len(db.get_active_salary_entries(emp_id, py, pm)) == 1
+    assert len(db.get_active_salary_entries(emp_id, y, m)) == 1
+
+    # Bekor qilingandan keyin hisobdan chiqadi
+    prev_entry = db.get_active_salary_entries(emp_id, py, pm)[0]
+    db.cancel_salary_entry(prev_entry["id"], 0, "xato yozildi")
+    assert db.get_salary_totals_by_type(emp_id, py, pm)["bonus"] == 0
+    assert len(db.get_active_salary_entries(emp_id, py, pm)) == 0
+
     print("✅ test_month_nav: hammasi o'tdi")
 
 

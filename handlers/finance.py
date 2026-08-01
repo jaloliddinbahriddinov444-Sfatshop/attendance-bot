@@ -394,6 +394,7 @@ async def finance_date_handler(message: Message, state: FSMContext, bot: Bot):
                             emp["telegram_id"],
                             texts.NOTIFY_SALARY_ADDED.format(
                                 emoji="💸", type_name="Avans", sign="−",
+                                month=f"{texts.MONTHS_UZ[tz_now().month]} {tz_now().year}",
                                 amount=int(data["fin_amount"]),
                                 reason=_esc(reason),
                             )

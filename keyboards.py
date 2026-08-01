@@ -684,6 +684,25 @@ def month_excel_kb(prefix: str, year: int, month: int) -> InlineKeyboardMarkup:
     )]])
 
 
+def salary_month_pick_kb(prefix: str, months) -> InlineKeyboardMarkup:
+    """Ish haqqi yozuvi uchun oy tanlash. months — [(yil, oy, yopiqmi), ...].
+
+    Yopiq oy 🔒 bilan ko'rsatiladi (handler alert beradi).
+    Callback: {prefix}:{y}:{m}; bekor: {prefix}:cancel
+    """
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{'🔒 ' if closed else ''}{texts.MONTHS_UZ[m]} {y}",
+            callback_data=f"{prefix}:{y}:{m}"
+        )]
+        for y, m, closed in months
+    ]
+    rows.append([InlineKeyboardButton(
+        text=texts.BTN_CANCEL, callback_data=f"{prefix}:cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def month_close_pick_kb(months) -> InlineKeyboardMarkup:
     """Oy yopish uchun oy tanlash. months — [(yil, oy, yopiqmi), ...]."""
     rows = [

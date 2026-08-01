@@ -599,6 +599,7 @@ SALARY_ADD_SAVED = (
     "✅ <b>Saqlandi</b>\n\n"
     "{emoji} {type_name}\n"
     "Xodim: <b>{name}</b>\n"
+    "Oy: <b>{month}</b>\n"
     "Summa: <b>{amount:,} so'm</b>\n"
     "Sabab: {reason}"
 )
@@ -624,6 +625,7 @@ SALARY_CANCEL_DONE = (
 NOTIFY_SALARY_ADDED = (
     "{emoji} <b>Sizga yangi ish haqqi yozuvi qo'shildi</b>\n\n"
     "Turi: <b>{type_name}</b>\n"
+    "Oy: <b>{month}</b>\n"
     "Summa: <b>{sign}{amount:,} so'm</b>\n"
     "Sabab: {reason}\n\n"
     "Batafsil: 💰 <b>Ish haqqim</b> tugmasi"
@@ -747,6 +749,18 @@ MONTH_CLOSED_BADGE = "🔒 "
 MONTH_CLOSE_PICK = "🔒 <b>Oy yopish</b>\n\nQaysi oyni boshqarasiz?"
 MONTH_EXCEL_PROMPT = "📥 <b>{month} {year}</b> uchun Excel tayyorlaymi?"
 BTN_MONTH_EXCEL_DL = "📥 Yuklab olish"
+
+# ===== Ish haqqi yozuvida oy tanlash =====
+SALARY_ADD_CHOOSE_MONTH = (
+    "📅 <b>Qaysi oy uchun?</b>\n\n"
+    "{emoji} {type_name} — <b>{name}</b>"
+)
+SALARY_CANCEL_CHOOSE_MONTH = (
+    "📅 <b>Qaysi oy yozuvini bekor qilasiz?</b>\n\n"
+    "👤 <b>{name}</b>"
+)
+MONTH_CLOSED_ALERT = "🔒 Bu oy yopilgan"
+AUDIT_FOR_MONTH = "\n📅 Tegishli oy: <i>{month} {year}</i>"
 
 
 # ===== Vazifalar (Phase 2) =====

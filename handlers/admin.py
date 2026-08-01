@@ -948,20 +948,21 @@ async def admin_salary_close(call: CallbackQuery, state: FSMContext):
 
 # --- Qo'shish oqimi ---
 
+def _ym_closed(ym: str | None) -> bool:
+    """"YYYY-MM" ko'rinishidagi oy yopiqligini tekshiradi."""
+    if not ym:
+        return False
+    y, m = map(int, ym.split("-"))
+    return is_month_closed(y, m)
+
+
 @router.callback_query(F.data == "sal_add")
 async def admin_salary_add_choose_employee(call: CallbackQuery, state: FSMContext):
     me = get_employee_by_telegram_id(call.from_user.id)
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    # Joriy oy yopiqligini tekshirish
-    now = tz_now()
-    if is_month_closed(now.year, now.month):
-        await call.message.edit_text(
-            texts.MONTH_BLOCKED.format(month=texts.MONTHS_UZ[now.month], year=now.year)
-        )
-        await call.answer()
-        return
+    # Oy yopiqligi bu yerda tekshirilmaydi — keyingi qadamda oy tanlanadi
     employees = get_all_employees(active_only=True)
     if not employees:
         await call.message.edit_text("📋 Xodimlar yo'q.")
@@ -1013,6 +1014,41 @@ async def admin_salary_ask_amount(call: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
     await state.update_data(sal_type=entry_type)
+    # Qaysi oyga tegishli — oxirgi 3 oy (yopiqlari 🔒 bilan)
+    months = [(y, m, is_month_closed(y, m)) for y, m in last_months(3)]
+    await call.message.edit_text(
+        texts.SALARY_ADD_CHOOSE_MONTH.format(
+            emoji=type_info[0], type_name=type_info[1],
+            name=data["sal_emp_name"]
+        ),
+        reply_markup=kb.salary_month_pick_kb("sal_month", months)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("sal_month:"))
+async def admin_salary_month_chosen(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    if parts[1] == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    year, month = nav_ym(call.data)
+    if is_month_closed(year, month):
+        await call.answer(texts.MONTH_CLOSED_ALERT, show_alert=True)
+        return
+
+    data = await state.get_data()
+    if "sal_type" not in data:
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    type_info = texts.SALARY_TYPES[data["sal_type"]]
+    await state.update_data(
+        sal_ym=f"{year:04d}-{month:02d}",
+        sal_ym_label=f"{texts.MONTHS_UZ[month]} {year}",
+    )
     await call.message.edit_text(
         texts.SALARY_ADD_AMOUNT.format(
             emoji=type_info[0], type_name=type_info[1],
@@ -1093,18 +1129,27 @@ async def admin_salary_confirm(call: CallbackQuery, state: FSMContext, bot: Bot)
     type_info = texts.SALARY_TYPES[data["sal_type"]]
     me = get_employee_by_telegram_id(call.from_user.id)
 
+    # Tanlangan oy tasdiq kutilayotganda yopilib qolgan bo'lishi mumkin
+    if _ym_closed(data.get("sal_ym")):
+        await state.clear()
+        await call.message.edit_text(texts.MONTH_CLOSED_ALERT)
+        await call.answer()
+        return
+
+    month_label = data.get("sal_ym_label") or f"{texts.MONTHS_UZ[tz_now().month]} {tz_now().year}"
     add_salary_entry(
         employee_id=data["sal_emp_id"],
         entry_type=data["sal_type"],
         amount=data["sal_amount"],
         reason=data["sal_reason"],
-        created_by=me["id"] if me else 0
+        created_by=me["id"] if me else 0,
+        for_ym=data.get("sal_ym"),
     )
 
     await call.message.edit_text(
         texts.SALARY_ADD_SAVED.format(
             emoji=type_info[0], type_name=type_info[1],
-            name=data["sal_emp_name"],
+            name=data["sal_emp_name"], month=month_label,
             amount=data["sal_amount"], reason=data["sal_reason"]
         )
     )
@@ -1113,7 +1158,7 @@ async def admin_salary_confirm(call: CallbackQuery, state: FSMContext, bot: Bot)
     # Xodimga bildirishnoma
     sign = type_info[2]
     notify_text = texts.NOTIFY_SALARY_ADDED.format(
-        emoji=type_info[0], type_name=type_info[1],
+        emoji=type_info[0], type_name=type_info[1], month=month_label,
         sign=sign, amount=data["sal_amount"], reason=data["sal_reason"]
     )
     await _send_notification(bot, data["sal_emp_telegram"], notify_text)
@@ -1126,18 +1171,25 @@ async def _do_save_salary(message: Message, state: FSMContext, bot: Bot, data: d
     type_info = texts.SALARY_TYPES[data["sal_type"]]
     me = get_employee_by_telegram_id(message.from_user.id)
 
+    if _ym_closed(data.get("sal_ym")):
+        await state.clear()
+        await message.answer(texts.MONTH_CLOSED_ALERT)
+        return
+
+    month_label = data.get("sal_ym_label") or f"{texts.MONTHS_UZ[tz_now().month]} {tz_now().year}"
     add_salary_entry(
         employee_id=data["sal_emp_id"],
         entry_type=data["sal_type"],
         amount=data["sal_amount"],
         reason=reason,
-        created_by=me["id"] if me else 0
+        created_by=me["id"] if me else 0,
+        for_ym=data.get("sal_ym"),
     )
 
     await message.answer(
         texts.SALARY_ADD_SAVED.format(
             emoji=type_info[0], type_name=type_info[1],
-            name=data["sal_emp_name"],
+            name=data["sal_emp_name"], month=month_label,
             amount=data["sal_amount"], reason=reason
         ),
         reply_markup=_section_kb(message, "employees")
@@ -1146,7 +1198,7 @@ async def _do_save_salary(message: Message, state: FSMContext, bot: Bot, data: d
     # Bildirishnoma
     sign = type_info[2]
     notify_text = texts.NOTIFY_SALARY_ADDED.format(
-        emoji=type_info[0], type_name=type_info[1],
+        emoji=type_info[0], type_name=type_info[1], month=month_label,
         sign=sign, amount=data["sal_amount"], reason=reason
     )
     await _send_notification(bot, data["sal_emp_telegram"], notify_text)
@@ -1162,14 +1214,7 @@ async def admin_salary_cancel_choose_emp(call: CallbackQuery, state: FSMContext)
     if not me or not me["is_admin"]:
         await call.answer(texts.NO_PERMISSION, show_alert=True)
         return
-    # Joriy oy yopiqligini tekshirish
-    now = tz_now()
-    if is_month_closed(now.year, now.month):
-        await call.message.edit_text(
-            texts.MONTH_BLOCKED.format(month=texts.MONTHS_UZ[now.month], year=now.year)
-        )
-        await call.answer()
-        return
+    # Oy yopiqligi bu yerda tekshirilmaydi — xodimdan keyin oy tanlanadi
     employees = get_all_employees(active_only=True)
     if not employees:
         await call.message.edit_text("📋 Xodimlar yo'q.")
@@ -1196,19 +1241,45 @@ async def admin_salary_cancel_choose_entry(call: CallbackQuery, state: FSMContex
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
-    now = tz_now()
-    entries = get_active_salary_entries(emp_id, now.year, now.month)
-    if not entries:
-        await call.message.edit_text(
-            texts.SALARY_CANCEL_NO_ENTRIES.format(name=emp["full_name"])
-        )
-        await call.answer()
-        return
-
     await state.update_data(sal_emp_id=emp_id, sal_emp_name=emp["full_name"],
                             sal_emp_telegram=emp["telegram_id"])
+    # Qaysi oy yozuvlari — oxirgi 3 oy (yopiqlari 🔒 bilan)
+    months = [(y, m, is_month_closed(y, m)) for y, m in last_months(3)]
     await call.message.edit_text(
-        texts.SALARY_CANCEL_CHOOSE_ENTRY.format(name=emp["full_name"]),
+        texts.SALARY_CANCEL_CHOOSE_MONTH.format(name=emp["full_name"]),
+        reply_markup=kb.salary_month_pick_kb("sal_cancmon", months)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("sal_cancmon:"))
+async def admin_salary_cancel_month_chosen(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    if parts[1] == "cancel":
+        await state.clear()
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    year, month = nav_ym(call.data)
+    if is_month_closed(year, month):
+        await call.answer(texts.MONTH_CLOSED_ALERT, show_alert=True)
+        return
+
+    data = await state.get_data()
+    if "sal_emp_id" not in data:
+        await call.message.edit_text(texts.CANCELLED)
+        await call.answer()
+        return
+    entries = get_active_salary_entries(data["sal_emp_id"], year, month)
+    if not entries:
+        # Alert HTML qo'llamaydi — teglarni olib tashlaymiz
+        plain = re.sub(r"<[^>]+>", "",
+                       texts.SALARY_CANCEL_NO_ENTRIES.format(name=data["sal_emp_name"]))
+        await call.answer(plain, show_alert=True)
+        return
+
+    await call.message.edit_text(
+        texts.SALARY_CANCEL_CHOOSE_ENTRY.format(name=data["sal_emp_name"]),
         reply_markup=kb.salary_entries_kb(entries, "sal_canc")
     )
     await call.answer()
@@ -1252,6 +1323,21 @@ async def admin_salary_cancel_save(message: Message, state: FSMContext, bot: Bot
 
     data = await state.get_data()
     me = get_employee_by_telegram_id(message.from_user.id)
+
+    # Yozuv tegishli oy sabab yozish davomida yopilib qolgan bo'lishi mumkin
+    entry = get_salary_entry(data["sal_cancel_entry_id"])
+    if entry:
+        entry_ym = (entry["for_ym"] if "for_ym" in entry.keys() else None)
+        if not entry_ym:
+            try:
+                entry_ym = to_local(entry["created_at"]).strftime("%Y-%m")
+            except Exception:
+                entry_ym = None
+        if _ym_closed(entry_ym):
+            await state.clear()
+            await message.answer(texts.MONTH_CLOSED_ALERT)
+            return
+
     cancel_salary_entry(
         entry_id=data["sal_cancel_entry_id"],
         cancelled_by=me["id"] if me else 0,
@@ -1541,6 +1627,18 @@ def _audit_view(year: int, month: int) -> str:
             creator=e["creator_name"] or "—",
             reason=e["reason"] or "—"
         )
+        # Boshqa oyga yozilgan yozuv — tegishli oyni ko'rsatamiz
+        for_ym = e["for_ym"] if "for_ym" in e.keys() else None
+        if for_ym:
+            try:
+                created_ym = to_local(e["created_at"]).strftime("%Y-%m")
+            except Exception:
+                created_ym = None
+            if for_ym != created_ym:
+                fy, fm = for_ym.split("-")
+                text += texts.AUDIT_FOR_MONTH.format(
+                    month=texts.MONTHS_UZ[int(fm)], year=fy
+                )
         if e["cancelled"]:
             text += texts.AUDIT_CANCELLED.format(
                 canceller=e["canceller_name"] or "—",
