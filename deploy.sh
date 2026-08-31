@@ -23,6 +23,7 @@ FILES=(
   test_notifications.py
   test_menu_parity.py
   test_menu_webapp.py
+  test_payroll_roles.py
 )
 
 md5of() { md5 -q "$1" 2>/dev/null || md5sum "$1" | cut -d' ' -f1; }

@@ -1434,10 +1434,14 @@ def get_all_employees_salary_summary(year: int, month: int):
     yoki ish haqqi yozuvi) bo'lsa — kiritiladi. Shunday qilib xodim o'chirilgandan
     keyin ham o'sha oygi ma'lumotlari hisobotda saqlanib qoladi.
     Asosiy ish haqqi kunbay (lavozim/kunlik stavka) bo'yicha hisoblanadi.
+    Rahbariyat (boss / bosh_admin) kunbay hisoblanmaydi — payrollga kirmaydi.
     """
     employees = get_all_employees(active_only=False)
     result = []
     for emp in employees:
+        role = emp["role"] if "role" in emp.keys() else "employee"
+        if role != "employee":
+            continue
         minutes = get_monthly_worked_minutes(emp["id"], year, month)
         totals = get_salary_totals_by_type(emp["id"], year, month)
         base = get_monthly_base_salary(emp["id"], year, month)

@@ -533,3 +533,16 @@ Serverda `calendar_days` jadvali avtomatik yaratildi, log toza, servis `active`.
 eski nusxalar tufayli `./deploy.sh check` doim ogohlantirardi). Python 3.14 da
 `asyncio.get_event_loop()` endi loop yaratmagani uchun `test_notifications.py`
 `asyncio.run` ga o'tkazildi.
+
+**Payroll hisoboti — faqat `role='employee'`.** `get_all_employees_salary_summary`
+endi rahbariyatni (boss / bosh_admin) o'tkazib yuboradi: ular kunbay
+hisoblanmaydi, shuning uchun ish haqqi Excelida ko'rinmasligi kerak
+(Jaloliddin — bosh_admin, Azizjon va Kamron — boss). Test:
+`test_payroll_roles.py`.
+
+Tekshiruv (2026-08-31, jonli baza): bayram haqqi barcha haqiqiy xodimlarga
+qo'shilgan — `base − davomat_qismi` har birida aynan bir kunlik stavkaga teng
+(Manzura/Maftuna/Nodira/Jahongir +150 000, Feruza +130 000, Fayozbek +230 000).
+DIQQAT: bayram summasi hech qayerda alohida qator bo'lib ko'rinmaydi, jimgina
+«Asosiy ish haqqi» ichiga qo'shiladi — shuning uchun tashqaridan «hisoblanmadi»
+bo'lib tuyuladi.
