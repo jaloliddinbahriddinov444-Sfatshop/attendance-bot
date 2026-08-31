@@ -212,7 +212,7 @@ def test_reminders_gate():
 
     assert not hasattr(rem, "WEEKEND_DAYS"), "eski WEEKEND_DAYS qolib ketgan"
 
-    run = asyncio.get_event_loop().run_until_complete
+    run = asyncio.run
     reached = {"n": 0}
 
     def _boom():
@@ -297,7 +297,7 @@ def test_handlers():
     class St:
         async def clear(self): pass
 
-    run = asyncio.get_event_loop().run_until_complete
+    run = asyncio.run
 
     # Ruxsatsiz foydalanuvchi hech narsa o'zgartira olmasin
     other = Call(4242, f"cal:h:{Y}-{M:02d}-05")
