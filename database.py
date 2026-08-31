@@ -2,6 +2,7 @@
 import json
 import re
 import sqlite3
+from datetime import datetime, timedelta
 from contextlib import contextmanager
 from typing import Optional
 from config import DB_PATH, DEFAULT_OFFICE_LAT, DEFAULT_OFFICE_LON, \
@@ -217,6 +218,17 @@ def init_db():
             menu_key    TEXT PRIMARY KEY,
             layout_json TEXT NOT NULL,
             updated_at  TIMESTAMP DEFAULT (datetime('now'))
+        );
+
+        -- Kalendar kunlari (Bosh Admin/Boss belgilaydi):
+        --   'holiday' = Bayram kuni  -> eslatma yo'q + to'liq stavka yoziladi
+        --   'dayoff'  = Dam olish    -> eslatma yo'q, stavka hisoblanmaydi
+        CREATE TABLE IF NOT EXISTS calendar_days (
+            day_date   TEXT PRIMARY KEY,
+            day_type   TEXT NOT NULL CHECK(day_type IN ('holiday', 'dayoff')),
+            title      TEXT,
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT (datetime('now'))
         );
         """)
 
@@ -709,6 +721,132 @@ def reset_menu_layout(menu_key: str):
     """Saqlangan joylashuvni o'chirish — standart tartibga qaytadi."""
     with get_db() as conn:
         conn.execute("DELETE FROM menu_layouts WHERE menu_key = ?", (menu_key,))
+
+
+# ===== Kalendar: bayram va dam olish kunlari =====
+# HOLIDAY ('holiday') — Bayram kuni: eslatma yuborilmaydi VA o'sha kun uchun
+#                       har bir xodimga to'liq kunlik stavka yoziladi.
+# DAYOFF  ('dayoff')  — Dam olish kuni: eslatma yuborilmaydi, lekin ish haqqi
+#                       hisoblanmaydi (xodim kelib ishlagan bo'lsa — odatdagidek).
+
+HOLIDAY = "holiday"
+DAYOFF = "dayoff"
+CALENDAR_TYPES = (HOLIDAY, DAYOFF)
+
+
+def get_calendar_day(day_date: str):
+    """Bitta kunning yozuvi (yo'q bo'lsa None). day_date: 'YYYY-MM-DD'."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM calendar_days WHERE day_date = ?", (day_date,)
+        ).fetchone()
+
+
+def get_calendar_day_type(day_date: str):
+    """Kun turi: 'holiday' | 'dayoff' | None."""
+    row = get_calendar_day(day_date)
+    return row["day_type"] if row else None
+
+
+def set_calendar_day(day_date: str, day_type: str,
+                     created_by: int = None, title: str = None) -> None:
+    """Kunni belgilash yoki turini almashtirish (UPSERT)."""
+    if day_type not in CALENDAR_TYPES:
+        raise ValueError(f"Noma'lum kun turi: {day_type}")
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO calendar_days (day_date, day_type, title, created_by) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(day_date) DO UPDATE SET "
+            "day_type = excluded.day_type, "
+            "title = excluded.title, "
+            "created_by = excluded.created_by, "
+            "created_at = datetime('now')",
+            (day_date, day_type, title, created_by)
+        )
+
+
+def clear_calendar_day(day_date: str) -> int:
+    """Belgini olib tashlash. Nechta qator o'chirilganini qaytaradi."""
+    with get_db() as conn:
+        return conn.execute(
+            "DELETE FROM calendar_days WHERE day_date = ?", (day_date,)
+        ).rowcount
+
+
+def toggle_calendar_day(day_date: str, day_type: str,
+                        created_by: int = None) -> str:
+    """Kunni bosganda: bo'sh -> day_type, o'sha tur -> bo'sh, boshqa tur -> day_type.
+
+    Yangi holatni qaytaradi ('holiday' | 'dayoff' | None).
+    """
+    current = get_calendar_day_type(day_date)
+    if current == day_type:
+        clear_calendar_day(day_date)
+        return None
+    set_calendar_day(day_date, day_type, created_by)
+    return day_type
+
+
+def get_calendar_month(year: int, month: int) -> dict:
+    """Oydagi belgilangan kunlar: {'YYYY-MM-DD': 'holiday'|'dayoff'}."""
+    ym = f"{year:04d}-{month:02d}"
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT day_date, day_type FROM calendar_days "
+            "WHERE substr(day_date, 1, 7) = ? ORDER BY day_date",
+            (ym,)
+        ).fetchall()
+    return {r["day_date"]: r["day_type"] for r in rows}
+
+
+def get_calendar_days_by_type(year: int, month: int, day_type: str) -> list:
+    """Oydagi berilgan turdagi kunlar ro'yxati (sanalar, o'sish tartibida)."""
+    return [d for d, t in get_calendar_month(year, month).items() if t == day_type]
+
+
+def is_non_working_day(day_date: str) -> bool:
+    """Shu kun bayram yoki dam olish deb belgilanganmi (eslatma yuborilmaydi)."""
+    return get_calendar_day_type(day_date) is not None
+
+
+# ===== Eslatma yuboriladigan hafta kunlari =====
+# Sozlama: settings['reminder_days'] — 7 belgili satr, indeks 0=Dushanba ...
+# 6=Yakshanba; '1' = eslatma yuboriladi, '0' = yuborilmaydi.
+
+REMINDER_DAYS_KEY = "reminder_days"
+DEFAULT_REMINDER_DAYS = "1111111"
+
+
+def get_reminder_days() -> set:
+    """Eslatma yuboriladigan hafta kunlari to'plami (0=Dushanba ... 6=Yakshanba)."""
+    raw = get_setting(REMINDER_DAYS_KEY, DEFAULT_REMINDER_DAYS) or ""
+    raw = str(raw).strip()
+    if len(raw) != 7 or any(ch not in "01" for ch in raw):
+        raw = DEFAULT_REMINDER_DAYS  # buzuq qiymat botni to'xtatmasin
+    return {i for i, ch in enumerate(raw) if ch == "1"}
+
+
+def set_reminder_days(days) -> None:
+    """Hafta kunlari to'plamini saqlash."""
+    days = set(days)
+    set_setting(REMINDER_DAYS_KEY,
+                "".join("1" if i in days else "0" for i in range(7)))
+
+
+def toggle_reminder_day(index: int) -> bool:
+    """Bitta hafta kunini yoqish/o'chirish. Yangi holatni (True=yoqilgan) qaytaradi."""
+    if not 0 <= index <= 6:
+        raise ValueError("Hafta kuni indeksi 0..6 bo'lishi kerak")
+    days = get_reminder_days()
+    if index in days:
+        days.discard(index)
+        new_state = False
+    else:
+        days.add(index)
+        new_state = True
+    set_reminder_days(days)
+    return new_state
 
 
 def set_pf_access(employee_id: int, value: int):
@@ -2169,6 +2307,43 @@ def get_shift_norm_history(scope: str, target_id: int) -> list:
         """, (scope, target_id)).fetchall()
 
 
+def get_monthly_holiday_pay(employee_id: int, year: int, month: int) -> int:
+    """Oydagi BAYRAM kunlari uchun qo'shiladigan to'liq stavka summasi.
+
+    Qoida (2026-08-31 da kelishilgan): bayram kuni hamma xodimga bir kunlik
+    to'liq stavka yoziladi; agar xodim o'sha kuni ishga kelgan bo'lsa,
+    ishlagan vaqti ham odatdagidek ustiga qo'shiladi.
+
+    Istisnolar:
+      - kunlik stavkasi yo'q (eski soatbay) xodimga qo'llanmaydi;
+      - faolsiz (o'chirilgan) xodimga avtomatik yozilmaydi;
+      - xodim ro'yxatdan o'tgan kundan OLDINGI bayramlar hisoblanmaydi.
+    """
+    emp = get_employee_by_id(employee_id)
+    if not emp:
+        return 0
+    daily_rate = emp["daily_rate"] if "daily_rate" in emp.keys() else 0
+    position_id = emp["position_id"] if "position_id" in emp.keys() else None
+    if not daily_rate or not position_id:
+        return 0
+    is_active = bool(emp["is_active"]) if "is_active" in emp.keys() else True
+    if not is_active:
+        return 0
+
+    days = get_calendar_days_by_type(year, month, HOLIDAY)
+    if not days:
+        return 0
+
+    reg = emp["registered_at"] if "registered_at" in emp.keys() else None
+    if reg:
+        try:
+            start = (datetime.fromisoformat(str(reg)) + timedelta(hours=5)).strftime("%Y-%m-%d")
+            days = [d for d in days if d >= start]
+        except (ValueError, TypeError):
+            pass
+    return len(days) * int(daily_rate)
+
+
 def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
     """Kunlik stavka asosida oylik asosiy ish haqqi hisoblash.
 
@@ -2210,6 +2385,9 @@ def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:
             total += int(capped / standard_minutes * daily_rate)
         except Exception:
             continue
+
+    # Bayram kunlari uchun to'liq stavka (kelmagan bo'lsa ham)
+    total += get_monthly_holiday_pay(employee_id, year, month)
     return total
 
 

@@ -9,6 +9,8 @@ Har 60 soniyada tekshiradi (apscheduler'siz, oddiy loop):
 Takrorlanish himoyasi: reminder_log jadvali (try_mark_reminder, atomik
 INSERT OR IGNORE) — har tur har xodimga kuniga 1 marta, restart'da ham.
 Yoqish/o'chirish: settings 'reminders_enabled' ('1'/'0', default '1').
+Haftalik jadval: settings 'reminder_days' (7 belgi, 0=Dushanba).
+Bayram/dam olish kunlari: calendar_days jadvali — o'sha kuni eslatma yo'q.
 """
 import asyncio
 import logging
@@ -16,14 +18,11 @@ import logging
 from database import (
     get_dashboard_today, get_office_config, get_setting,
     get_all_admins, try_mark_reminder,
+    get_reminder_days, is_non_working_day,
 )
 from tzutil import now as tz_now
 
 logger = logging.getLogger(__name__)
-
-# Dam olish kunlari — datetime.weekday() raqamlari (0=Dushanba ... 6=Yakshanba).
-# Hozircha bo'sh; kelajakda masalan {6} = yakshanba.
-WEEKEND_DAYS: set = set()
 
 # Nishon daqiqadan keyin necha daqiqagacha yuborish mumkin (loop kechiksa ham)
 WINDOW_MINUTES = 10
@@ -55,9 +54,15 @@ async def _tick(bot):
     import texts
 
     now = tz_now()  # Toshkent vaqti (naive)
-    if now.weekday() in WEEKEND_DAYS:
-        return
+    today = now.strftime("%Y-%m-%d")
+
     if get_setting("reminders_enabled", "1") != "1":
+        return
+    # Haftalik jadval: Moliya → Bildirishnomalar → Eslatma kunlari
+    if now.weekday() not in get_reminder_days():
+        return
+    # Bayram yoki dam olish deb belgilangan kun — eslatma yuborilmaydi
+    if is_non_working_day(today):
         return
 
     cfg = get_office_config()
@@ -67,7 +72,6 @@ async def _tick(bot):
     we_min = we_h * 60 + we_m
 
     now_min = now.hour * 60 + now.minute
-    today = now.strftime("%Y-%m-%d")
 
     def in_window(target_min: int) -> bool:
         return target_min <= now_min < target_min + WINDOW_MINUTES

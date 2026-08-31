@@ -113,7 +113,8 @@ asyncio.run(test_web())
 
 async def test_save():
     yangi = [["expense", "income"], ["summary"], ["excel"], ["delete"],
-             ["archive"], ["categories"], ["personal_finance"], ["back"]]
+             ["archive"], ["categories"], ["personal_finance"],
+             ["notifications"], ["back"]]
     pf_yangi = [["expense", "income"], ["summary", "excel"], ["delete"],
                 ["archive"], ["categories"], ["back"]]
     # IKKI menyu birdaniga (yangi format)

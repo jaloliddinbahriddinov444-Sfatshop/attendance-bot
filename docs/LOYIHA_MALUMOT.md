@@ -472,3 +472,57 @@ Audit qatorida boshqa oyga tegishli yozuvga "Tegishli oy: ..." qo'shiladi.
 SALARY_ADD_SAVED / NOTIFY_SALARY_ADDED endi oyni ko'rsatadi (moliya avans
 bildirishnomasi ham moslandi). Prefikslar: `sal_month:`, `sal_cancmon:`.
 Test: `test_month_nav.py` ga for_ym stsenariylari qo'shildi.
+
+### 2026-08-31 — Bildirishnomalar bo'limi: eslatma kunlari + bayram/dam olish kalendari
+
+Moliya bo'limi pastiga «🔔 Bildirishnomalar» tugmasi qo'shildi (Boss va Bosh
+Admin uchun). Ichida uchta ekran:
+
+**1. 📅 Eslatma kunlari** — haftaning qaysi kunlari davomat eslatmasi
+yuborilishi. Sozlama: `settings['reminder_days']` — 7 belgili satr, indeks
+0=Dushanba ... 6=Yakshanba, '1'=yuboriladi. Standart `'1111111'`; buzuq qiymat
+kelsa jimgina standartga qaytadi (bot yiqilmaydi). `get_reminder_days()`,
+`set_reminder_days()`, `toggle_reminder_day()`. Callback: `rday:{0..6}`,
+`rday:close`.
+
+**2. 🎉 Bayram kunlari** va **3. 🏖 Dam olish kunlari** — ATAYIN ikki alohida
+tugma, chunki dam berilib ish haqqi hisoblanmasligi ham, bayram bo'lib to'liq
+stavka yozilishi ham mumkin:
+
+| Tur | Jadval qiymati | Eslatma | Ish haqqi |
+|---|---|---|---|
+| Bayram | `calendar_days.day_type='holiday'` | yuborilmaydi | har xodimga **+1 kunlik to'liq stavka** |
+| Dam olish | `calendar_days.day_type='dayoff'` | yuborilmaydi | hisoblanmaydi (kelib ishlasa — odatdagidek) |
+
+**Baza:** yangi jadval `calendar_days (day_date PK, day_type CHECK IN
+('holiday','dayoff'), title, created_by, created_at)`. Funksiyalar:
+`get_calendar_day(_type)`, `set_calendar_day`, `clear_calendar_day`,
+`toggle_calendar_day` (bo'sh→tur, o'sha tur→bo'sh, boshqa tur→almashadi),
+`get_calendar_month`, `get_calendar_days_by_type`, `is_non_working_day`.
+
+**Ish haqqi:** `get_monthly_holiday_pay(emp, y, m)` — YAGONA joy,
+`get_monthly_base_salary` oxirida qo'shiladi, shuning uchun Excel, "Ish haqqim",
+xodim kartochkasi, audit — hammasi avtomatik moslashdi. Qoida: bayram kuni
+hammaga bir kunlik stavka, ishga kelgan bo'lsa ishlagani ham USTIGA qo'shiladi.
+Istisnolar: kunlik stavkasi yo'q (eski soatbay) xodimga qo'llanmaydi; faolsiz
+(o'chirilgan) xodimga yozilmaydi (aks holda hisobotda barcha o'chirilganlar
+paydo bo'lardi); xodim ro'yxatdan o'tgan kundan OLDINGI bayramlar hisoblanmaydi.
+
+**Eslatmalar (`services/reminders.py`):** eski `WEEKEND_DAYS` konstantasi
+o'chirildi. `_tick` boshida tartib: `reminders_enabled` → hafta kuni jadvali →
+`is_non_working_day(bugun)`.
+
+**Kalendar klaviaturasi (`kb.calendar_kb(mode, year, month)`):** oy sarlavhasi,
+Du–Ya qatori, kunlar to'ri (belgilangan kun emoji bilan: 🎉 / 🏖), pastda
+◀️ / 🚪 Yopish / ▶️. Callbacklar: `cal:{h|o}:{YYYY-MM-DD}` (toggle),
+`caln:{h|o}:{yil}:{oy}` (oy), `calnop` (bo'sh katak), `cal:close`.
+DIQQAT: `cal:` prefiksi `caln:` ni tutmaydi (':' vs 'n') — `fin_del:`/`fin_delc:`
+bilan bir xil naqsh. Oy oralig'i: joriy oydan −12 … +12 (`CAL_NAV_BACK/FWD`).
+
+**Yangi/o'zgargan fayllar:** `handlers/notifications.py` (yangi router, bot.py da
+`finance` dan keyin), `database.py`, `keyboards.py` (MENU_REGISTRY: `notify_menu`
++ `finance_menu` ga `notifications`), `texts.py`, `services/reminders.py`,
+`bot.py`. Testlar: yangi `test_notifications.py` (kalendar CRUD, hafta kunlari,
+bayram stavkasi, klaviaturalar, eslatma sikli, handlerlar — ruxsatsiz
+foydalanuvchi va buzuq callbacklar bilan); `test_menu_parity.py` va
+`test_menu_webapp.py` yangi tugmaga moslandi. Jonli `attendance.db` tegilmagan.

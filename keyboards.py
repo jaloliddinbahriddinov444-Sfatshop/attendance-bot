@@ -10,6 +10,7 @@ from database import (
     finance_category_label,
     get_pf_categories, pf_category_label,
     get_menu_layout,
+    get_calendar_month, get_reminder_days,
 )
 
 
@@ -212,12 +213,25 @@ MENU_REGISTRY = {
             "archive": texts.BTN_FINANCE_ARCHIVE,
             "categories": texts.BTN_FINANCE_CATEGORIES,
             "personal_finance": texts.BTN_PERSONAL_FINANCE,
+            "notifications": texts.BTN_NOTIFICATIONS,
             "back": texts.BTN_BACK,
         },
         "default": [["income", "expense"], ["summary", "excel"], ["delete"],
                     ["archive"], ["categories"], ["personal_finance"],
-                    ["back"]],
-        "targets": {"personal_finance": "pf_menu", "back": "back"},
+                    ["notifications"], ["back"]],
+        "targets": {"personal_finance": "pf_menu",
+                    "notifications": "notify_menu", "back": "back"},
+    },
+    "notify_menu": {
+        "title": "🔔 Bildirishnomalar",
+        "buttons": {
+            "remind_days": texts.BTN_REMIND_DAYS,
+            "holidays": texts.BTN_HOLIDAYS,
+            "dayoffs": texts.BTN_DAYOFFS,
+            "back": texts.BTN_NOTIFY_BACK,
+        },
+        "default": [["remind_days"], ["holidays"], ["dayoffs"], ["back"]],
+        "targets": {"back": "back"},
     },
     "pf_menu": {
         "title": "📊 Shaxsiy xarajatlarim",
@@ -628,6 +642,74 @@ def remove_boss_confirm_kb() -> InlineKeyboardMarkup:
 
 def finance_menu_kb() -> ReplyKeyboardMarkup:
     return build_menu_kb("finance_menu")
+
+
+def notify_menu_kb() -> ReplyKeyboardMarkup:
+    """Bildirishnomalar bo'limi (Moliya menyusi ostida)."""
+    return build_menu_kb("notify_menu")
+
+
+# ===== Bildirishnomalar: hafta kunlari va kalendar =====
+
+CAL_MODES = {"h": "holiday", "o": "dayoff"}
+CAL_MARKS = {"holiday": "🎉", "dayoff": "🏖"}
+CAL_NAV_BACK = 12   # necha oy orqaga ruxsat
+CAL_NAV_FWD = 12    # necha oy oldinga ruxsat
+
+
+def remind_days_kb() -> InlineKeyboardMarkup:
+    """Haftaning 7 kuni — eslatma yoqilgan/o'chirilgan (toggle)."""
+    active = get_reminder_days()
+    rows = []
+    for i, name in enumerate(texts.WEEKDAYS_UZ):
+        mark = "✅" if i in active else "⬜"
+        rows.append([InlineKeyboardButton(
+            text=f"{mark} {name}", callback_data=f"rday:{i}"
+        )])
+    rows.append([InlineKeyboardButton(text="🚪 Yopish", callback_data="rday:close")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def calendar_kb(mode: str, year: int, month: int) -> InlineKeyboardMarkup:
+    """Oylik kalendar — kunlarni bosib bayram/dam olish deb belgilash.
+
+    mode: 'h' (bayram) yoki 'o' (dam olish).
+    Callback: `cal:{mode}:{YYYY-MM-DD}` — belgilash/olib tashlash,
+              `caln:{mode}:{yil}:{oy}` — oy almashtirish,
+              `calnop` — bo'sh katak (hech nima qilmaydi).
+    """
+    import calendar as _cal
+
+    marked = get_calendar_month(year, month)
+    rows = [[InlineKeyboardButton(
+        text=f"{texts.MONTHS_UZ[month]} {year}", callback_data="calnop"
+    )]]
+    rows.append([
+        InlineKeyboardButton(text=d, callback_data="calnop")
+        for d in ("Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya")
+    ])
+    for week in _cal.Calendar(firstweekday=0).monthdayscalendar(year, month):
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(text=" ", callback_data="calnop"))
+                continue
+            date_str = f"{year:04d}-{month:02d}-{day:02d}"
+            mark = CAL_MARKS.get(marked.get(date_str), "")
+            row.append(InlineKeyboardButton(
+                text=f"{mark}{day}" if mark else str(day),
+                callback_data=f"cal:{mode}:{date_str}"
+            ))
+        rows.append(row)
+
+    py, pm = tzutil.prev_month(year, month)
+    ny, nm = tzutil.next_month(year, month)
+    rows.append([
+        InlineKeyboardButton(text="◀️", callback_data=f"caln:{mode}:{py}:{pm}"),
+        InlineKeyboardButton(text="🚪 Yopish", callback_data="cal:close"),
+        InlineKeyboardButton(text="▶️", callback_data=f"caln:{mode}:{ny}:{nm}"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def pf_menu_kb(from_finance: bool = False) -> ReplyKeyboardMarkup:

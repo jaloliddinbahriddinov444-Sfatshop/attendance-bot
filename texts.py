@@ -1672,3 +1672,56 @@ REMIND_ADMIN_SUMMARY = (
     "⚠️ <b>Davomat belgilamaganlar</b> ({time} holatiga):\n\n"
     "{names}"
 )
+
+
+# ===== Bildirishnomalar bo'limi (Moliya → 🔔 Bildirishnomalar) =====
+BTN_NOTIFICATIONS = "🔔 Bildirishnomalar"
+BTN_REMIND_DAYS = "📅 Eslatma kunlari"
+BTN_HOLIDAYS = "🎉 Bayram kunlari"
+BTN_DAYOFFS = "🏖 Dam olish kunlari"
+BTN_NOTIFY_BACK = "⬅️ Moliya bo'limiga"
+
+NOTIFY_MENU = (
+    "🔔 <b>Bildirishnomalar</b>\n\n"
+    "📅 <b>Eslatma kunlari</b> — haftaning qaysi kunlari xodimlarga "
+    "davomat eslatmasi yuborilishini belgilaysiz.\n\n"
+    "🎉 <b>Bayram kunlari</b> — eslatma yuborilmaydi va o'sha kun uchun "
+    "har bir xodimga <b>to'liq kunlik stavka</b> yoziladi.\n\n"
+    "🏖 <b>Dam olish kunlari</b> — eslatma yuborilmaydi, lekin ish haqqi "
+    "<b>hisoblanmaydi</b>."
+)
+
+REMIND_DAYS_HEADER = (
+    "📅 <b>Eslatma kunlari</b>\n\n"
+    "Belgilangan kunlarda xodimlarga avtomatik davomat eslatmasi yuboriladi.\n"
+    "Kunni yoqish/o'chirish uchun ustiga bosing.\n\n"
+    "✅ — eslatma yuboriladi   ⬜ — yuborilmaydi\n"
+    "<i>Bayram va dam olish kunlarida eslatma baribir yuborilmaydi.</i>"
+)
+REMIND_DAYS_ALL_OFF = (
+    "🔕 Hech qaysi kun tanlanmagan — eslatmalar umuman yuborilmaydi."
+)
+REMIND_DAY_TOGGLED = "{day} — {state}"
+REMIND_DAY_ON = "✅ eslatma yuboriladi"
+REMIND_DAY_OFF = "⬜ eslatma yuborilmaydi"
+
+CAL_HOLIDAY_HEADER = (
+    "🎉 <b>Bayram kunlari</b> — {month} {year}\n\n"
+    "Kunni bosib belgilang yoki belgini olib tashlang.\n"
+    "Bayram kunida eslatma yuborilmaydi va har bir xodimga "
+    "<b>to'liq kunlik stavka</b> yoziladi.\n\n"
+    "🎉 — bayram   🏖 — dam olish (boshqa bo'limda belgilangan)"
+)
+CAL_DAYOFF_HEADER = (
+    "🏖 <b>Dam olish kunlari</b> — {month} {year}\n\n"
+    "Kunni bosib belgilang yoki belgini olib tashlang.\n"
+    "Dam olish kunida eslatma yuborilmaydi, ish haqqi <b>hisoblanmaydi</b> "
+    "(xodim kelib ishlasa — odatdagidek hisoblanadi).\n\n"
+    "🏖 — dam olish   🎉 — bayram (boshqa bo'limda belgilangan)"
+)
+CAL_MARKED_LIST = "\n\n<b>Shu oyda belgilangan:</b>\n{days}"
+CAL_MARKED_NONE = "\n\n<i>Shu oyda belgilangan kun yo'q.</i>"
+CAL_DAY_SET_HOLIDAY = "🎉 {date} — bayram kuni deb belgilandi"
+CAL_DAY_SET_DAYOFF = "🏖 {date} — dam olish kuni deb belgilandi"
+CAL_DAY_CLEARED = "⬜ {date} — belgi olib tashlandi"
+CAL_LIMIT = "Bu oydan narisiga o'tib bo'lmaydi."
