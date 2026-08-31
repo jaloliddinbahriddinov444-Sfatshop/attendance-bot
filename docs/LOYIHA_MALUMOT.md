@@ -526,3 +526,10 @@ bilan bir xil naqsh. Oy oralig'i: joriy oydan −12 … +12 (`CAL_NAV_BACK/FWD`)
 bayram stavkasi, klaviaturalar, eslatma sikli, handlerlar — ruxsatsiz
 foydalanuvchi va buzuq callbacklar bilan); `test_menu_parity.py` va
 `test_menu_webapp.py` yangi tugmaga moslandi. Jonli `attendance.db` tegilmagan.
+
+DEPLOY QILINDI: 2026-08-31 17:34, zaxira `backups/pre-deploy-20260831-173418.tgz`.
+Serverda `calendar_days` jadvali avtomatik yaratildi, log toza, servis `active`.
+`deploy.sh` FILES ro'yxatiga uchala test fayli ham qo'shildi (aks holda serverdagi
+eski nusxalar tufayli `./deploy.sh check` doim ogohlantirardi). Python 3.14 da
+`asyncio.get_event_loop()` endi loop yaratmagani uchun `test_notifications.py`
+`asyncio.run` ga o'tkazildi.

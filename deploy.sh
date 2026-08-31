@@ -20,6 +20,9 @@ FILES=(
   texts.py
   services/reminders.py
   handlers/notifications.py
+  test_notifications.py
+  test_menu_parity.py
+  test_menu_webapp.py
 )
 
 md5of() { md5 -q "$1" 2>/dev/null || md5sum "$1" | cut -d' ' -f1; }
