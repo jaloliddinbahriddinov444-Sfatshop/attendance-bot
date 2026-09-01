@@ -546,3 +546,25 @@ qo'shilgan — `base − davomat_qismi` har birida aynan bir kunlik stavkaga ten
 DIQQAT: bayram summasi hech qayerda alohida qator bo'lib ko'rinmaydi, jimgina
 «Asosiy ish haqqi» ichiga qo'shiladi — shuning uchun tashqaridan «hisoblanmadi»
 bo'lib tuyuladi.
+
+### 2026-09-01 — bayram summasi ko'rinadigan bo'ldi
+
+Yuqoridagi «ko'rinmaydi» muammosi yopildi. `get_holiday_pay_days(emp, y, m)` —
+bayram kunlari uchun YAGONA manba (eligibility shu yerda), `get_monthly_holiday_pay`
+endi shundan kelib chiqadi. Ko'rsatiladigan joylar:
+
+| Joy | Nima ko'rinadi |
+|---|---|
+| Xodim Exceli, kunlar jadvali | Bayram kuni `🎉 Bayram kuni` + summa ustunida stavka; dam olish `🏖 Dam olish` (ilgari ikkalasi ham qizil «kelmagan» edi); ishga kelgan bo'lsa `9s 15d + 🎉 bayram` |
+| Xodim Exceli, xulosa | `🎉 Shundan bayram (N kun)` qatori |
+| «Ish haqqim» profili | `SALARY_HOLIDAY_LINE` — `{holiday_line}` o'rniga |
+| Xodim kartochkasi (matn) | xuddi shu qator |
+| Payroll Excel | 13-ustun `🎉 Shundan bayram` — **JAMI formulasi F:K ga tegmaydi**, chunki summa Asosiy ichida; ustun qo'shsangiz shu qoidani buzmang |
+
+`get_payroll_employees(active_only)` — `boss`/`bosh_admin` ni chiqaradigan
+yagona filtr (`admin` roli QOLADI, u haqiqiy xodim bo'lishi mumkin). Ishlatilgan
+joylar: payroll xulosasi, davomat Exceli (`_send_attendance_excel`), barcha
+xodimlar Exceli (`_build_all_emp_excel`).
+
+Test: `test_payroll_roles.py` (rol filtri, `admin` qolishi, Excelda bayram
+qatorlari). Tekshiruv yo'riqnomasi: `docs/TEKSHIRUV_2026-08-31.md`.

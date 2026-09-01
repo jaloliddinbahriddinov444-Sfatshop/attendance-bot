@@ -21,7 +21,8 @@
 | `db2174c` | `deploy.sh` — server bilan solishtirish (`check`) va deploy (`push`) |
 | `281e90d` | `test_notifications.py` Python 3.14 uchun `asyncio.run` ga o'tkazildi |
 | `23800fa` | Deploy qaydi + `deploy.sh` FILES ro'yxatiga testlar |
-| `8cf88b3` | **Payroll:** ish haqqi Excelida faqat `role='employee'` |
+| `8cf88b3` | **Payroll:** ish haqqi Excelida rahbariyat yo'q |
+| `34386cc` | **Bayram summasi ko'rinadigan bo'ldi** + rahbariyat davomat/xodim Excellaridan ham chiqdi |
 
 Ikkita asosiy da'vo tekshirilishi kerak:
 
@@ -136,6 +137,50 @@ qanday farq ekanini yozing va to'xtang.
 > kelgan, shuning uchun ular o'sha kun uchun **ham ishlagan vaqtini, ham
 > to'liq stavkani** oladi. Qoida shunday kelishilgan.
 
+### 4b. Bayram summasi hisobotlarda KO'RINADIMI
+
+Bu 2026-09-01 da qo'shildi: ilgari summa jimgina «Asosiy ish haqqi» ichida
+edi, endi alohida ko'rsatiladi.
+
+```bash
+ssh root@45.138.158.174 "cd /opt/davomat && ./venv/bin/python - <<'PY'
+import sys, types, io
+f = types.ModuleType('face_recognition'); f.face_encodings = lambda *a, **k: []
+sys.modules.setdefault('face_recognition', f)
+from openpyxl import load_workbook
+from handlers.emp_data import _build_emp_excel
+ws = load_workbook(io.BytesIO(_build_emp_excel(7, 2026, 8))).active
+for row in ws.iter_rows(values_only=True):
+    vals = [str(v) for v in row if v is not None]
+    if vals:
+        print(' | '.join(vals))
+PY"
+```
+
+Kutiladi (Kuchkeldiyeva Maftuna, avgust):
+
+| Qator | Ko'rinishi |
+|---|---|
+| `30.08.2026` | `🏖 Dam olish` — ilgari qizil «kelmagan» edi |
+| `31.08.2026` | `🎉 Bayram kuni` va summa ustunida `150000` |
+| Xulosa | `💵 Asosiy ish haqqi: 3333879`, ostida `🎉 Shundan bayram (1 kun): 150000` |
+
+Xodimning o'z profilida ham xuddi shu qator chiqadi:
+
+```bash
+ssh root@45.138.158.174 "cd /opt/davomat && ./venv/bin/python - <<'PY'
+import sys, types
+f = types.ModuleType('face_recognition'); f.face_encodings = lambda *a, **k: []
+sys.modules.setdefault('face_recognition', f)
+import database as db
+from handlers.profile import _salary_view
+print(_salary_view(db.get_employee_by_id(7), 2026, 8)[:420])
+PY"
+```
+
+Kutiladi: `🕐 Asosiy ish haqqi: +3,333,879 so'm` qatoridan keyin
+`🎉 Shundan bayram (1 kun): 150,000 so'm`.
+
 Qo'shimcha: kalendar yozuvlarini ko'rish (avgustda 5 ta dam olish yakshanbasi
 va 1 ta bayram bo'lishi kerak):
 
@@ -157,17 +202,38 @@ sys.modules.setdefault('face_recognition', f)
 from handlers.admin import _generate_salary_excel
 from openpyxl import load_workbook
 ws = load_workbook(io.BytesIO(_generate_salary_excel(2026, 8))).active
-for r in ws.iter_rows(min_row=4, max_row=ws.max_row, max_col=6, values_only=True):
+for r in ws.iter_rows(min_row=3, max_row=ws.max_row, values_only=True):
     if r[1]:
-        print(r[0], r[1][:26], '| ASOSIY =', r[5])
+        print(r[0], '|', str(r[1])[:26], '| ASOSIY:', r[5], '| BAYRAM:', r[12])
 PY"
 ```
 
 Kutiladi: **aynan 6 qator** — Manzura, Maftuna, Fayozbek, Nodira, Feruza,
 Jahongir. Ro'yxatda **Jaloliddin, Azizjon, Kamron BO'LMASLIGI kerak**.
+Oxirgi (13-) ustun `🎉 Shundan bayram` — har birida o'z kunlik stavkasi.
 
-Filtr qoidasi: `database.py` → `get_all_employees_salary_summary` faqat
-`role='employee'` ni oladi. Rollarni ko'rish:
+> 13-ustun ataylab eng oxirida: bayram summasi «Asosiy ish haqqi» ICHIDA,
+> shuning uchun `JAMI` formulasi (`=SUM(F:K)`) unga tegmasligi kerak. Agar u
+> yig'indiga kirib qolsa — summa ikki marta hisoblanadi.
+
+Xuddi shu filtr «barcha xodimlar» Excelida ham amal qiladi:
+
+```bash
+ssh root@45.138.158.174 "cd /opt/davomat && ./venv/bin/python - <<'PY'
+import sys, types, io
+f = types.ModuleType('face_recognition'); f.face_encodings = lambda *a, **k: []
+sys.modules.setdefault('face_recognition', f)
+from openpyxl import load_workbook
+from handlers.emp_data import _build_all_emp_excel
+print(load_workbook(io.BytesIO(_build_all_emp_excel(2026, 8))).sheetnames)
+PY"
+```
+
+Kutiladi: 6 ta sheet, rahbariyat yo'q.
+
+Filtr qoidasi: `database.py` → `get_payroll_employees()` — `boss` va
+`bosh_admin` rollarini chiqarib tashlaydi. `admin` roli **qoladi**: u
+haqiqiy, ish haqqi oladigan xodim bo'lishi mumkin. Rollarni ko'rish:
 
 ```bash
 ssh root@45.138.158.174 "cd /opt/davomat && ./venv/bin/python -c \"import database as db; [print(e['id'], e['role'], e['full_name'][:26]) for e in db.get_all_employees(active_only=True)]\""
@@ -188,7 +254,12 @@ Botda Boss yoki Bosh Admin hisobi bilan:
    Avgustda 2, 9, 16, 23, 30-kunlar `🏖`, 31-kun `🎉` bo'lib turishi kerak.
 5. **⬅️ Moliya bo'limiga** → Moliya menyusiga qaytaradimi?
 6. **Ish haqqi → Excel hisobot (Avgust 2026)** → faylda 6 ta xodim,
-   rahbariyat yo'q (5-bosqich natijasi bilan bir xil bo'lishi kerak).
+   rahbariyat yo'q (5-bosqich natijasi bilan bir xil bo'lishi kerak), oxirgi
+   ustunda `🎉 Shundan bayram`.
+7. Xodim hisobi bilan **💰 Ish haqqim** → «Asosiy ish haqqi» ostida
+   `🎉 Shundan bayram (1 kun): 150,000 so'm` qatori bormi?
+8. **Xodimlar ma'lumoti → Excel** → 31.08 qatori `🎉 Bayram kuni` va summa
+   bilan, 30.08 esa `🏖 Dam olish` (qizil «kelmagan» emas).
 
 > Kalendar tugmalari faqat Boss va Bosh Admin uchun ishlaydi — oddiy xodim
 > bosganda hech nima o'zgarmasligi kerak (bu holat testda ham qoplangan).
@@ -202,8 +273,8 @@ foydalanuvchi qaroriga havola qilingan:
 
 | Holat | Izoh |
 |---|---|
-| Bayram summasi alohida qator bo'lib ko'rinmaydi | Profil, xodim kartochkasi va Excelda «bayram» degan qator/ustun yo'q — summa «Asosiy ish haqqi» ichida. Ko'rinadigan qilish taklif qilingan, hali tasdiqlanmagan. |
 | Jaloliddin va Azizjon profilida bayram haqqi 0 | Ularda `daily_rate = 0` va lavozim yo'q. Kunlik stavkasi yo'q xodimga bayram haqqi yozilmaydi — kodda ataylab shunday. |
+| Bayram kunida ishga kelgan xodimga ikki xil to'lov | Ishlagan vaqti + to'liq stavka. Qoida shunday kelishilgan, xato emas. Xodim Excelida bunday kun `9s 15d + 🎉 bayram` deb belgilanadi. |
 | Kamron (`boss`, demo hisob) profilida bayram haqqi bor | Uning `daily_rate = 150 000`. Excelga endi kirmaydi, lekin o'z profilida summa ko'rinadi. Hisobni o'chirish/faolsizlantirish taklif qilingan. |
 | Serverdagi `._*` fayllar | macOS metama'lumot axlati, kod emas. |
 
@@ -233,6 +304,7 @@ Tekshiruv tugagach quyidagilarni yozing:
 3. 3-bosqich: servis holati, `calendar_days` bormi, logda Traceback bormi.
 4. **4-bosqich: har bir xodim uchun `OK`/`XATO` va farq raqamlari** — bu eng
    muhimi, raqamlarni to'liq keltiring.
+   4b: bayram qatori Excelda va profilda ko'rindimi.
 5. 5-bosqich: Excelda nechta qator, rahbariyat bormi.
 6. 6-bosqich: Telegramdagi qaysi qadam ishladi/ishlamadi.
 7. Nomuvofiqlik topilsa — kutilgan va haqiqiy natijani yonma-yon yozing.
