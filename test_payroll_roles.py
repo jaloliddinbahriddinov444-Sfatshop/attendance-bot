@@ -49,9 +49,33 @@ def main():
     # Bayram haqqi oddiy xodimga baribir yoziladi
     emp = db.get_employee_by_telegram_id(1001)
     assert db.get_monthly_holiday_pay(emp["id"], Y, M) == 150000
+    assert db.get_holiday_pay_days(emp["id"], Y, M) == [f"{Y}-{M:02d}-10"]
     row = db.get_all_employees_salary_summary(Y, M)[0]
     assert row["base"] == 150000, row["base"]
+    assert row["holiday"] == 150000, row["holiday"]
     print("✅ bayram haqqi hisobot qatoriga tushdi")
+
+    # role='admin' — haqiqiy xodim, payrolldan tushib qolmasin
+    _mk(1005, "Admin Xodim", "admin", 120000)
+    names = [r["employee"]["full_name"]
+             for r in db.get_all_employees_salary_summary(Y, M)]
+    assert "Admin Xodim" in names, names
+    print("✅ 'admin' roli payrollda qoladi")
+
+    # Excelda ko'rinadigan bo'ldimi: kunlar jadvali + «shundan bayram» qatori
+    import sys, types, io
+    fake = types.ModuleType("face_recognition")
+    fake.face_encodings = lambda *a, **k: []
+    sys.modules.setdefault("face_recognition", fake)
+    from handlers.emp_data import _build_emp_excel
+    from openpyxl import load_workbook
+
+    ws = load_workbook(io.BytesIO(_build_emp_excel(emp["id"], Y, M))).active
+    cells = [[c for c in row] for row in ws.iter_rows(values_only=True)]
+    flat = [str(c) for row in cells for c in row if c is not None]
+    assert any("🎉 Bayram kuni" in s for s in flat), "kunlar jadvalida bayram yo'q"
+    assert any("Shundan bayram" in s for s in flat), "xulosada bayram qatori yo'q"
+    print("✅ xodim Excelida bayram kuni va «shundan bayram» ko'rinadi")
 
     print("\n✅✅ HAMMASI O'TDI — jonli attendance.db tegilmadi")
 

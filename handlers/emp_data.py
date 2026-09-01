@@ -20,7 +20,9 @@ from database import (
     get_active_salary_entries, get_salary_totals_by_type,
     get_open_tasks_with_skips, set_employee_daily_rate,
     get_effective_shift_norm, get_effective_shift_hours,
-    is_month_closed,
+    is_month_closed, get_payroll_employees,
+    get_calendar_month, get_holiday_pay_days, get_monthly_holiday_pay,
+    HOLIDAY, DAYOFF,
 )
 from tzutil import nav_ym
 from aiogram.exceptions import TelegramBadRequest
@@ -53,6 +55,8 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
     blue_fill = PatternFill("solid", fgColor="4472C4")
     light_fill = PatternFill("solid", fgColor="EBF3FB")
     absent_fill = PatternFill("solid", fgColor="FFE0E0")
+    holiday_fill = PatternFill("solid", fgColor="FFF2CC")
+    dayoff_fill = PatternFill("solid", fgColor="EDEDED")
     net_fill = PatternFill("solid", fgColor="2E5C8A")
     base_fill = PatternFill("solid", fgColor="E2EFDA")
 
@@ -112,6 +116,11 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
     records = get_monthly_attendance(emp["id"], year, month)
     records_by_day = {r["day"]: r for r in records}
 
+    # Kalendar: bayram kuniga to'liq stavka yoziladi (kelmagan bo'lsa ham),
+    # dam olish kuni esa «kelmagan» emas — shunchaki ish kuni emas.
+    cal = get_calendar_month(year, month)
+    holiday_pay_days = set(get_holiday_pay_days(emp["id"], year, month))
+
     _, days_in_month = calendar.monthrange(year, month)
     cur_row = header_row + 1
     total_days = 0
@@ -158,9 +167,22 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
         else:
             fi_str = "—"
             lo_str = "—"
-            worked_str = "kelmagan"
             day_earn = 0
-            row_fill = absent_fill
+            day_kind = cal.get(date_str)
+            if day_kind == HOLIDAY:
+                worked_str, row_fill = "🎉 Bayram kuni", holiday_fill
+            elif day_kind == DAYOFF:
+                worked_str, row_fill = "🏖 Dam olish", dayoff_fill
+            else:
+                worked_str, row_fill = "kelmagan", absent_fill
+
+        # Bayram kuni — to'liq stavka; ishga kelgan bo'lsa ishlagani ustiga qo'shiladi
+        if date_str in holiday_pay_days:
+            day_earn += daily_rate
+            col_base_sum += daily_rate
+            if rec and rec["first_in"]:
+                worked_str += " + 🎉 bayram"
+                row_fill = holiday_fill
 
         row_vals = [date_label, weekday_label, fi_str, lo_str, worked_str,
                     day_earn if day_earn else ""]
@@ -187,6 +209,9 @@ def _fill_emp_sheet(ws, emp, year: int, month: int) -> None:
         ("⏱ Jami ishlangan vaqt:", f"{total_minutes // 60} soat {total_minutes % 60} daqiqa"),
         ("💵 Asosiy ish haqqi:", base),
     ]
+    if holiday_pay_days:
+        summary.append((f"  🎉 Shundan bayram ({len(holiday_pay_days)} kun):",
+                        len(holiday_pay_days) * daily_rate))
     for e in entries:
         info_t = texts.SALARY_TYPES.get(e["entry_type"], ("📋", "?", ""))
         emoji, type_name, sign = info_t
@@ -235,7 +260,7 @@ def _build_emp_excel(emp_id: int, year: int, month: int) -> bytes:
 def _build_all_emp_excel(year: int, month: int) -> bytes:
     """Barcha faol xodimlar — har biri alohida sheet."""
     from openpyxl import Workbook
-    employees = [e for e in get_all_employees(active_only=True) if e["telegram_id"] > 0]
+    employees = [e for e in get_payroll_employees(active_only=True) if e["telegram_id"] > 0]
     wb = Workbook()
     used_names: set = set()
     first = True
@@ -385,6 +410,12 @@ def _build_full_profile(emp_id: int) -> str:
         month=texts.MONTHS_UZ[month], year=year
     )
     out += texts.EMP_FULL_SALARY_BASE.format(base=base)
+    hol_days = get_holiday_pay_days(emp_id, year, month)
+    if hol_days:
+        out += texts.SALARY_HOLIDAY_LINE.format(
+            days=len(hol_days),
+            amount=get_monthly_holiday_pay(emp_id, year, month)
+        )
     entries = get_active_salary_entries(emp_id, year, month)
     for e in entries:
         info = texts.SALARY_TYPES.get(e["entry_type"], ("📋", "?", ""))

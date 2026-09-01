@@ -14,7 +14,8 @@ import texts
 import keyboards as kb
 from states import AdminPanel, AdminSalary, TaskCreate, AdminAddEmployee, ShiftNormFSM
 from database import (
-    get_employee_by_telegram_id, get_all_employees, get_employee_by_id,
+    get_employee_by_telegram_id, get_all_employees, get_payroll_employees,
+    get_employee_by_id,
     deactivate_employee, set_admin_status, get_active_employees_count,
     get_today_all_attendance, get_office_config, set_setting,
     get_monthly_attendance, delete_day_attendance, add_manual_attendance,
@@ -489,7 +490,7 @@ async def _send_attendance_excel(message: Message, year: int, month: int):
         await message.answer("❌ openpyxl kutubxonasi o'rnatilmagan.")
         return
 
-    employees = get_all_employees(active_only=True)
+    employees = get_payroll_employees(active_only=True)
 
     wb = Workbook()
     ws = wb.active
@@ -1382,12 +1383,14 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     title.font = Font(bold=True, size=14, color="FFFFFF")
     title.fill = PatternFill(start_color="2E5C8A", end_color="2E5C8A", fill_type="solid")
     title.alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=12)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=13)
     ws.row_dimensions[1].height = 25
 
+    # 13-ustun ma'lumot uchun: bayram summasi «Asosiy ish haqqi» ICHIDA,
+    # shuning uchun JAMI formulasi (F:K) unga tegmaydi.
     headers = ["№", "Xodim", "Lavozim", "Soat", "Kunlik stavka",
                "Asosiy ish haqqi", "Avans", "Jarima", "Mukofot", "Bonus",
-               "Mahsulot", "JAMI (so'm)"]
+               "Mahsulot", "JAMI (so'm)", "🎉 Shundan bayram"]
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     thin = Side(border_style="thin", color="808080")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -1412,7 +1415,8 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
                   item["rate"], item["base"],
                   -item["totals"]["avans"], -item["totals"]["jarima"],
                   item["totals"]["mukofot"], item["totals"]["bonus"],
-                  -item["totals"]["mahsulot"], item["total"]]
+                  -item["totals"]["mahsulot"], item["total"],
+                  item["holiday"] or ""]
         for col, v in enumerate(values, 1):
             if col == 12:
                 # JAMI = asosiy + avans + jarima + mukofot + bonus + mahsulot (F:K)
@@ -1424,7 +1428,7 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
             else:
                 c = ws.cell(row=row, column=col, value=v)
             c.border = border
-            if col in (5, 6, 7, 8, 9, 10, 11, 12):
+            if col in (5, 6, 7, 8, 9, 10, 11, 12, 13):
                 c.number_format = '#,##0'
         grand_total += item["total"]
 
@@ -1443,7 +1447,7 @@ def _generate_salary_excel(year: int, month: int) -> bytes:
     c.number_format = '#,##0'
 
     # Ustun kengligi
-    widths = [4, 25, 15, 10, 14, 16, 12, 12, 12, 12, 12, 16]
+    widths = [4, 25, 15, 10, 14, 16, 12, 12, 12, 12, 12, 16, 17]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

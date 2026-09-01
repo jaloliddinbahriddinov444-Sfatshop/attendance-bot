@@ -686,6 +686,18 @@ def get_all_employees(active_only=True):
         return conn.execute("SELECT * FROM employees ORDER BY full_name").fetchall()
 
 
+def get_payroll_employees(active_only=True):
+    """Kunbay hisoblanadigan xodimlar — rahbariyat (boss / bosh_admin) kirmaydi.
+
+    Ish haqqi, davomat va xodim ma'lumoti hisobotlari shu ro'yxatdan foydalanadi:
+    rahbariyat davomat ham qilmaydi, kunbay ham hisoblanmaydi — hisobotda ular
+    faqat bo'sh qatorlar bo'lib turadi.
+    """
+    return [e for e in get_all_employees(active_only)
+            if (e["role"] if "role" in e.keys() else "employee")
+            not in ("boss", "bosh_admin")]
+
+
 # ===== Menyu joylashuvi =====
 
 def get_menu_layout(menu_key: str):
@@ -1436,12 +1448,9 @@ def get_all_employees_salary_summary(year: int, month: int):
     Asosiy ish haqqi kunbay (lavozim/kunlik stavka) bo'yicha hisoblanadi.
     Rahbariyat (boss / bosh_admin) kunbay hisoblanmaydi — payrollga kirmaydi.
     """
-    employees = get_all_employees(active_only=False)
+    employees = get_payroll_employees(active_only=False)
     result = []
     for emp in employees:
-        role = emp["role"] if "role" in emp.keys() else "employee"
-        if role != "employee":
-            continue
         minutes = get_monthly_worked_minutes(emp["id"], year, month)
         totals = get_salary_totals_by_type(emp["id"], year, month)
         base = get_monthly_base_salary(emp["id"], year, month)
@@ -1464,6 +1473,7 @@ def get_all_employees_salary_summary(year: int, month: int):
             "rate": rate,
             "minutes": minutes,
             "base": base,
+            "holiday": get_monthly_holiday_pay(emp["id"], year, month),
             "totals": totals,
             "total": total,
         })
@@ -2311,8 +2321,8 @@ def get_shift_norm_history(scope: str, target_id: int) -> list:
         """, (scope, target_id)).fetchall()
 
 
-def get_monthly_holiday_pay(employee_id: int, year: int, month: int) -> int:
-    """Oydagi BAYRAM kunlari uchun qo'shiladigan to'liq stavka summasi.
+def get_holiday_pay_days(employee_id: int, year: int, month: int) -> list:
+    """Shu xodimga BAYRAM haqqi yoziladigan kunlar (sanalar ro'yxati).
 
     Qoida (2026-08-31 da kelishilgan): bayram kuni hamma xodimga bir kunlik
     to'liq stavka yoziladi; agar xodim o'sha kuni ishga kelgan bo'lsa,
@@ -2322,21 +2332,24 @@ def get_monthly_holiday_pay(employee_id: int, year: int, month: int) -> int:
       - kunlik stavkasi yo'q (eski soatbay) xodimga qo'llanmaydi;
       - faolsiz (o'chirilgan) xodimga avtomatik yozilmaydi;
       - xodim ro'yxatdan o'tgan kundan OLDINGI bayramlar hisoblanmaydi.
+
+    YAGONA manba: summa ham, hisobotlardagi «shundan bayram» qatori ham
+    shu ro'yxatdan kelib chiqadi.
     """
     emp = get_employee_by_id(employee_id)
     if not emp:
-        return 0
+        return []
     daily_rate = emp["daily_rate"] if "daily_rate" in emp.keys() else 0
     position_id = emp["position_id"] if "position_id" in emp.keys() else None
     if not daily_rate or not position_id:
-        return 0
+        return []
     is_active = bool(emp["is_active"]) if "is_active" in emp.keys() else True
     if not is_active:
-        return 0
+        return []
 
     days = get_calendar_days_by_type(year, month, HOLIDAY)
     if not days:
-        return 0
+        return []
 
     reg = emp["registered_at"] if "registered_at" in emp.keys() else None
     if reg:
@@ -2345,7 +2358,16 @@ def get_monthly_holiday_pay(employee_id: int, year: int, month: int) -> int:
             days = [d for d in days if d >= start]
         except (ValueError, TypeError):
             pass
-    return len(days) * int(daily_rate)
+    return days
+
+
+def get_monthly_holiday_pay(employee_id: int, year: int, month: int) -> int:
+    """Oydagi bayram kunlari uchun qo'shiladigan to'liq stavka summasi."""
+    days = get_holiday_pay_days(employee_id, year, month)
+    if not days:
+        return 0
+    emp = get_employee_by_id(employee_id)
+    return len(days) * int(emp["daily_rate"])
 
 
 def get_monthly_base_salary(employee_id: int, year: int, month: int) -> int:

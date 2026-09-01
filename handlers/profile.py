@@ -16,7 +16,7 @@ from database import (
     get_monthly_worked_minutes, get_salary_totals_by_type,
     get_active_salary_entries, update_employee_card,
     get_position, get_monthly_base_salary, get_effective_shift_hours,
-    is_month_closed,
+    is_month_closed, get_holiday_pay_days, get_monthly_holiday_pay,
 )
 
 logger = logging.getLogger(__name__)
@@ -219,13 +219,18 @@ def _salary_view(employee, year: int, month: int):
         pos = get_position(position_id)
         records = get_monthly_attendance(employee["id"], year, month)
         days_worked = sum(1 for r in records if r["first_in"] and r["last_out"])
+        hol_days = get_holiday_pay_days(employee["id"], year, month)
+        holiday_line = texts.SALARY_HOLIDAY_LINE.format(
+            days=len(hol_days),
+            amount=get_monthly_holiday_pay(employee["id"], year, month)
+        ) if hol_days else ""
         summary = texts.SALARY_HEADER_DAILY.format(
             month=texts.MONTHS_UZ[month], year=year,
             position=pos["name"] if pos else employee["position"],
             work_hours=get_effective_shift_hours(employee["id"], year, month),
             daily_rate=daily_rate,
             days=days_worked,
-            base=base,
+            base=base, holiday_line=holiday_line,
             avans=totals["avans"], jarima=totals["jarima"],
             mukofot=totals["mukofot"], bonus=totals["bonus"],
             mahsulot=totals["mahsulot"], total=total,

@@ -20,6 +20,9 @@ FILES=(
   texts.py
   services/reminders.py
   handlers/notifications.py
+  handlers/admin.py
+  handlers/emp_data.py
+  handlers/profile.py
   test_notifications.py
   test_menu_parity.py
   test_menu_webapp.py
